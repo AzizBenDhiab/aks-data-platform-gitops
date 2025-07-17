@@ -71,19 +71,6 @@ containerSecurityContext:
   runAsNonRoot: true
   readOnlyRootFilesystem: false
 
-# Enable metrics for monitoring
-metrics:
-  enabled: true
-  serviceMonitor:
-    enabled: true
-  resources:
-    limits:
-      memory: 256Mi
-      cpu: 200m
-    requests:
-      memory: 128Mi
-      cpu: 100m
-
 # Network policy for security
 networkPolicy:
   enabled: true
@@ -94,3 +81,8 @@ networkPolicy:
 # TLS configuration
 tls:
   enabled: false  # Can be enabled for extra security
+  # Add this line to disable ServiceMonitor
+metrics:
+  enabled: false
+  serviceMonitor:
+    enabled: false
