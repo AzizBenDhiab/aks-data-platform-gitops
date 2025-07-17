@@ -17,7 +17,7 @@ spec:
     helm:
       valueFiles:
       - $values/values/postgresql-values.yaml
-  - repoURL: https://github.com/YOUR_USERNAME/aks-data-platform-gitops.git
+  - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
     targetRevision: HEAD
     ref: values
   destination:
@@ -33,9 +33,9 @@ spec:
     - PrunePropagationPolicy=foreground
     - ApplyOutOfSyncOnly=true
     retry:
-      limit: 5  # More retries for production
+      limit: 5  
       backoff:
         duration: 5s
         factor: 2
-        maxDuration: 10m  # Longer max duration
-  revisionHistoryLimit: 10  # Keep more history
+        maxDuration: 10m  
+  revisionHistoryLimit: 10  
