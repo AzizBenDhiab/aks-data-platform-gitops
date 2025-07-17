@@ -1,0 +1,103 @@
+#values/postgresql-values.yaml
+
+# PostgreSQL Authentication
+auth:
+  postgresPassword: ""
+  database: "superset"
+  username: "superset_user"
+  password: "CHANGE-ME-USER-PASSWORD-456!"
+
+# Primary PostgreSQL instance configuration
+primary:
+  # Persistence configuration
+  persistence:
+    enabled: true
+    size: 50Gi  # Production size
+    storageClass: "managed-csi"
+    accessModes:
+      - ReadWriteOnce
+  
+  # Production resource limits
+  resources:
+    limits:
+      memory: 2Gi
+      cpu: 1000m
+    requests:
+      memory: 1Gi
+      cpu: 500m
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    ports:
+      postgresql: 5432
+  
+  # Production PostgreSQL configuration
+  configuration: |-
+    # PostgreSQL production settings
+    max_connections = 200
+    shared_buffers = 256MB
+    effective_cache_size = 1GB
+    maintenance_work_mem = 64MB
+    checkpoint_completion_target = 0.9
+    wal_buffers = 16MB
+    default_statistics_target = 100
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    work_mem = 4MB
+    min_wal_size = 1GB
+    max_wal_size = 4GB
+
+# Read replicas for high availability
+readReplicas:
+  replicaCount: 1
+  resources:
+    limits:
+      memory: 1Gi
+      cpu: 500m
+    requests:
+      memory: 512Mi
+      cpu: 250m
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClass: "managed-csi"
+
+# Security and permissions
+volumePermissions:
+  enabled: true
+
+# Enable metrics for monitoring
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+  resources:
+    limits:
+      memory: 256Mi
+      cpu: 250m
+    requests:
+      memory: 128Mi
+      cpu: 100m
+
+# Backup configuration
+backup:
+  enabled: true
+  cronjob:
+    schedule: "0 2 * * *"  # Daily at 2 AM
+    historyLimit: 7
+    restartPolicy: OnFailure
+    storage:
+      size: 10Gi
+      storageClass: "managed-csi"
+
+# Security context
+containerSecurityContext:
+  enabled: true
+  runAsUser: 1001
+  runAsNonRoot: true
+  readOnlyRootFilesystem: false
+
+podSecurityContext:
+  enabled: true
+  fsGroup: 1001

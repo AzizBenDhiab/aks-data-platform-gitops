@@ -1,0 +1,48 @@
+# argocd/superset-app.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: apache-superset
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+  - repoURL: https://apache.github.io/superset
+    targetRevision: 0.10.17
+    chart: superset
+    helm:
+      valueFiles:
+      - $values/values/superset-values.yaml
+  - repoURL: https://github.com/YOUR_USERNAME/aks-data-platform-gitops.git
+    targetRevision: HEAD
+    ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: superset
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 10  # More retries for complex production deployment
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 15m  # Longer for production
+  revisionHistoryLimit: 10  # Keep more history
+  
+  # Ignore differences in replica counts (for autoscaling)
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas

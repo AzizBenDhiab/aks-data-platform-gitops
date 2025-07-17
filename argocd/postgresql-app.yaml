@@ -1,0 +1,41 @@
+# argocd/postgresql-app.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgresql
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+  - repoURL: https://charts.bitnami.com/bitnami
+    targetRevision: 12.12.10
+    chart: postgresql
+    helm:
+      valueFiles:
+      - $values/values/postgresql-values.yaml
+  - repoURL: https://github.com/YOUR_USERNAME/aks-data-platform-gitops.git
+    targetRevision: HEAD
+    ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: database
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5  # More retries for production
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 10m  # Longer max duration
+  revisionHistoryLimit: 10  # Keep more history
