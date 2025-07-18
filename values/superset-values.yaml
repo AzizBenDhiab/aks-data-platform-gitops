@@ -25,10 +25,10 @@ supersetNode:
   # Database connection to external PostgreSQL
   env:
     SUPERSET_DATABASE_URI: "postgresql://superset_user:dev-user-password@postgresql.database.svc.cluster.local:5432/superset"
-  
+
   # Development scaling - single replica
   replicaCount: 1
-  
+
   # Development resource limits
   resources:
     limits:
@@ -37,11 +37,11 @@ supersetNode:
     requests:
       memory: 512Mi
       cpu: 250m
-  
+
   # DISABLE Pod Disruption Budget for development
   podDisruptionBudget:
     enabled: false
-  
+
   # DISABLE autoscaling for development
   autoscaling:
     enabled: false
@@ -50,7 +50,7 @@ supersetNode:
 supersetWorker:
   # Single worker for development
   replicaCount: 1
-  
+
   # Development resource limits
   resources:
     limits:
@@ -59,11 +59,11 @@ supersetWorker:
     requests:
       memory: 256Mi
       cpu: 125m
-  
+
   # DISABLE Pod Disruption Budget for development
   podDisruptionBudget:
     enabled: false
-  
+
   # DISABLE autoscaling for development
   autoscaling:
     enabled: false
@@ -76,7 +76,7 @@ supersetCeleryBeat:
 init:
   # Load example dashboards and data for development
   loadExamples: true
-  
+
   # Create admin user
   createAdmin: true
   adminUser:
@@ -84,7 +84,7 @@ init:
     firstname: Admin
     lastname: User
     email: admin@example.com
-    password: admin  # Simple password for development
+    password: admin # Simple password for development
 
 # Service configuration
 service:
@@ -93,18 +93,19 @@ service:
 
 # External Redis configuration for caching (no auth for dev)
 extraEnv:
-  REDIS_HOST: redis-master.database.svc.cluster.local
+  REDIS_HOST: redis.database.svc.cluster.local
   REDIS_PORT: "6379"
-  # Cache configuration
+  REDIS_PASSWORD: "CHANGE-ME-REDIS-PASSWORD-789!"
   CACHE_CONFIG: |
     {
       'CACHE_TYPE': 'redis',
       'CACHE_DEFAULT_TIMEOUT': 300,
       'CACHE_KEY_PREFIX': 'superset_',
-      'CACHE_REDIS_HOST': 'redis-master.database.svc.cluster.local',
+      'CACHE_REDIS_HOST': 'redis.database.svc.cluster.local',
       'CACHE_REDIS_PORT': 6379,
+      'CACHE_REDIS_PASSWORD': 'CHANGE-ME-REDIS-PASSWORD-789!',  
       'CACHE_REDIS_DB': 1,
-      'CACHE_REDIS_URL': 'redis://redis-master.database.svc.cluster.local:6379/1'
+      'CACHE_REDIS_URL': 'redis://:CHANGE-ME-REDIS-PASSWORD-789!@redis.database.svc.cluster.local:6379/1' 
     }
 
 # Ingress configuration (disabled for development - use port-forward)
