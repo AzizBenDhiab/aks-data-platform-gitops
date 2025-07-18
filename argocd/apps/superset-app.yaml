@@ -11,15 +11,15 @@ metadata:
 spec:
   project: default
   sources:
-  - repoURL: https://apache.github.io/superset
-    targetRevision: 0.14.2
-    chart: superset
-    helm:
-      valueFiles:
-      - $values/values/superset-values.yaml
-  - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
-    targetRevision: HEAD
-    ref: values
+    - repoURL: https://apache.github.io/superset
+      targetRevision: 0.14.2
+      chart: superset
+      helm:
+        valueFiles:
+          - $values/values/superset-values.yaml
+    - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
+      targetRevision: HEAD
+      ref: values
   destination:
     server: https://kubernetes.default.svc
     namespace: superset
@@ -29,20 +29,12 @@ spec:
       selfHeal: true
       allowEmpty: false
     syncOptions:
-    - CreateNamespace=true
-    - PrunePropagationPolicy=foreground
-    - ApplyOutOfSyncOnly=true
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
     retry:
-      limit: 10  
+      limit: 5
       backoff:
-        duration: 10s
+        duration: 5s
         factor: 2
-        maxDuration: 10m  
-  revisionHistoryLimit: 10  
-  
-  # Ignore differences in replica counts (for autoscaling)
-  ignoreDifferences:
-  - group: apps
-    kind: Deployment
-    jsonPointers:
-    - /spec/replicas
+        maxDuration: 5m
+  revisionHistoryLimit: 3

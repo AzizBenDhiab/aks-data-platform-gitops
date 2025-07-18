@@ -26,6 +26,13 @@ postgresql:
       enabled: true
       size: 10Gi
       storageClass: "managed-csi"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+      requests:
+        memory: 256Mi
+        cpu: 250m
 
 redis:
   enabled: true
@@ -36,10 +43,13 @@ redis:
       enabled: true
       size: 5Gi
       storageClass: "managed-csi"
-
-# Remove all the external database configuration
-# supersetNode:
-#   env: {}  # Let Superset use internal databases
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 200m
+      requests:
+        memory: 128Mi
+        cpu: 100m
 
 # Superset Node (web server) configuration
 supersetNode:
@@ -98,7 +108,7 @@ ingress:
 # Security context
 runAsUser: 1000
 
-# Simple bootstrap script for development
+# Bootstrap script with required packages
 bootstrapScript: |
   #!/bin/bash
   pip install --no-cache-dir \
