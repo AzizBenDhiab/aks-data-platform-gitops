@@ -20,6 +20,19 @@ postgresql:
 redis:
   enabled: false
 
+# Global environment variables for ALL containers (including init containers)
+extraEnvRaw:
+  - name: DB_HOST
+    value: postgresql.database.svc.cluster.local
+  - name: DB_PORT
+    value: "5432"
+  - name: DB_USER
+    value: superset_user
+  - name: DB_PASS
+    value: dev-user-password
+  - name: DB_NAME
+    value: superset
+
 # Superset Node (web server) configuration
 supersetNode:
   # Database connection to external PostgreSQL
@@ -96,29 +109,18 @@ init:
     firstname: Admin
     lastname: User
     email: admin@example.com
-    password: admin # Simple password for development
+    password: admin
 
 # Service configuration
 service:
   type: ClusterIP
   port: 8088
 
-# External Redis configuration for caching (no auth for dev)
+# External Redis configuration - simplified for now
 extraEnv:
   REDIS_HOST: redis.database.svc.cluster.local
   REDIS_PORT: "6379"
-  REDIS_PASSWORD: "CHANGE-ME-REDIS-PASSWORD-789!"
-  CACHE_CONFIG: |
-    {
-      'CACHE_TYPE': 'redis',
-      'CACHE_DEFAULT_TIMEOUT': 300,
-      'CACHE_KEY_PREFIX': 'superset_',
-      'CACHE_REDIS_HOST': 'redis.database.svc.cluster.local',
-      'CACHE_REDIS_PORT': 6379,
-      'CACHE_REDIS_PASSWORD': 'CHANGE-ME-REDIS-PASSWORD-789!',  
-      'CACHE_REDIS_DB': 1,
-      'CACHE_REDIS_URL': 'redis://:CHANGE-ME-REDIS-PASSWORD-789!@redis.database.svc.cluster.local:6379/1' 
-    }
+  # Remove Redis password for now until we get PostgreSQL working
 
 # Ingress configuration (disabled for development - use port-forward)
 ingress:
