@@ -20,7 +20,7 @@ postgresql:
     postgresPassword: "superset-postgres-password"
     database: "superset"
     username: "superset"
-    password: "superset-password"
+    password: "superset"
   primary:
     persistence:
       enabled: true
