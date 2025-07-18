@@ -103,4 +103,5 @@ bootstrapScript: |
   #!/bin/bash
   pip install --no-cache-dir \
     psycopg2-binary \
-    redis
+    redis \
+    flask-cors
