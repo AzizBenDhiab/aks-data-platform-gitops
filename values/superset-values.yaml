@@ -17,7 +17,7 @@ configOverrides:
 postgresql:
   enabled: true
   auth:
-    postgresPassword: "superset-postgres-password"
+    postgresPassword: "superset"
     database: "superset"
     username: "superset"
     password: "superset"
