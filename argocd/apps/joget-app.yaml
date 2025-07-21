@@ -11,9 +11,9 @@ metadata:
 spec:
   project: default
   sources:
-    - repoURL: https://jogetworkflow.github.io/helm-joget/charts/
+    - repoURL: https://charts.bitnami.com/bitnami
       targetRevision: "*"
-      chart: joget
+      chart: tomcat
       helm:
         valueFiles:
           - $values/values/joget-values.yaml
