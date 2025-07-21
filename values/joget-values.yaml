@@ -1,0 +1,99 @@
+# values/joget-values.yaml
+# Joget DX Configuration for Data Platform
+
+# Deployment Configuration
+replicaCount: 1
+
+# Persistent Volume Configuration
+pvc:
+  accessMode: ReadWriteOnce
+  storage: 10Gi
+  storageClassName: "managed-csi"
+
+# Joget Image Configuration
+image:
+  repository: jogetworkflow/joget-dx8-tomcat9
+  pullPolicy: IfNotPresent
+  tag: "8.1.1"
+  volumePath: /opt/joget/wflow
+
+# Service Configuration
+service:
+  type: ClusterIP
+  http:
+    port: 8080
+  https:
+    port: 9080
+
+# Ingress Configuration (disabled for development)
+ingress:
+  enabled: false
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/affinity: cookie
+  hosts:
+    - host: joget.local
+
+# Resource Limits
+resources:
+  limits:
+    memory: 2Gi
+    cpu: 1000m
+  requests:
+    memory: 1Gi
+    cpu: 500m
+
+# Security Context
+podSecurityContext:
+  fsGroup: 0
+  runAsUser: 1000
+
+securityContext: {}
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod Annotations
+podAnnotations:
+  description: "Joget DX - Business Process & Workflow Engine"
+  database.connection: "postgresql://joget_user:joget_password@postgresql:5432/joget"
+
+# Autoscaling (disabled for development)
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+# Image Pull Secrets
+imagePullSecrets: []
+
+# Name Overrides
+nameOverride: ""
+fullnameOverride: ""
+
+# Node Selection
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+---
+# Optional: Database Connection ConfigMap for Joget
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: joget-db-config
+  namespace: joget
+data:
+  database-host: "postgresql"
+  database-port: "5432"
+  database-name: "joget"
+  database-user: "joget_user"
+  connection-url: "jdbc:postgresql://postgresql:5432/joget"

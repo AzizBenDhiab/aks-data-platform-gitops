@@ -1,28 +1,28 @@
-# argocd/postgresql-app.yaml
+# argocd/joget-app.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: postgresql
+  name: joget
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "2" # Deploy after PostgreSQL
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   sources:
-    - repoURL: https://charts.bitnami.com/bitnami
-      targetRevision: 12.12.10
-      chart: postgresql
+    - repoURL: https://jogetworkflow.github.io/helm-joget/charts/
+      targetRevision: "*"
+      chart: joget
       helm:
         valueFiles:
-          - $values/values/postgresql-values.yaml
+          - $values/values/joget-values.yaml
     - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
       targetRevision: HEAD
       ref: values
   destination:
     server: https://kubernetes.default.svc
-    namespace: joget # Changed to joget namespace
+    namespace: joget
   syncPolicy:
     automated:
       prune: true
@@ -36,5 +36,5 @@ spec:
       backoff:
         duration: 5s
         factor: 2
-        maxDuration: 10m
-  revisionHistoryLimit: 10
+        maxDuration: 5m
+  revisionHistoryLimit: 3

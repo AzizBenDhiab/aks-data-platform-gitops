@@ -1,22 +1,21 @@
-# values/postgresql-values.yaml - DEVELOPMENT VERSION
-
-# PostgreSQL Authentication
+# values/postgresql-values.yaml - JOGET VERSION
+# PostgreSQL Authentication for Joget
 auth:
-  postgresPassword: "dev-postgres-password"  # Simple for development
-  database: "superset"
-  username: "superset_user"
-  password: "dev-user-password"  # Simple for development
+  postgresPassword: "dev-postgres-password"
+  database: "joget" # Changed to joget database
+  username: "joget_user" # Changed to joget user
+  password: "joget_password" # Joget user password
 
 # Primary PostgreSQL instance configuration
 primary:
   # Persistence configuration
   persistence:
     enabled: true
-    size: 10Gi  # Smaller for development
+    size: 10Gi
     storageClass: "managed-csi"
     accessModes:
       - ReadWriteOnce
-  
+
   # Development resource limits
   resources:
     limits:
@@ -25,11 +24,29 @@ primary:
     requests:
       memory: 512Mi
       cpu: 250m
-  
+
   # Service configuration
   service:
     ports:
       postgresql: 5432
+
+  # Initialize database with Joget schema
+  initdb:
+    scripts:
+      01-create-joget-db.sql: |
+        -- Create Joget database and user automatically
+        CREATE DATABASE joget;
+        CREATE USER joget_user WITH PASSWORD 'joget_password';
+        GRANT ALL PRIVILEGES ON DATABASE joget TO joget_user;
+        ALTER USER joget_user CREATEDB;
+
+        -- Connect to joget database and set permissions
+        \c joget;
+        GRANT ALL ON SCHEMA public TO joget_user;
+        GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO joget_user;
+        GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO joget_user;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO joget_user;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO joget_user;
 
 # DISABLE read replicas for development
 readReplicas:
@@ -39,7 +56,7 @@ readReplicas:
 volumePermissions:
   enabled: true
 
-# DISABLE metrics for development (avoids ServiceMonitor error)
+# DISABLE metrics for development
 metrics:
   enabled: false
   serviceMonitor:
