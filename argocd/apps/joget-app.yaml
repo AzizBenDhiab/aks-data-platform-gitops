@@ -15,6 +15,12 @@ spec:
       targetRevision: "*"
       chart: joget
       helm:
+        releaseName: joget-dx8 # Important: This helps with template naming
+        parameters:
+          - name: nameOverride
+            value: "joget-dx8"
+          - name: fullnameOverride
+            value: "joget-dx8"
         valueFiles:
           - $values/values/joget-values.yaml
     - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git

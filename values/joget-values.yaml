@@ -1,5 +1,9 @@
 # values/joget-values.yaml
-# Joget DX Configuration for Data Platform
+# Joget DX Configuration with Template Fix
+
+# CRITICAL: These name overrides fix the template error
+nameOverride: "joget-dx8"
+fullnameOverride: "joget-dx8"
 
 # Deployment Configuration
 replicaCount: 1
@@ -28,11 +32,15 @@ service:
 # Ingress Configuration (disabled for development)
 ingress:
   enabled: false
+  className: "nginx"
   annotations:
     kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/affinity: cookie
   hosts:
     - host: joget.local
+      paths:
+        - path: /
+          pathType: Prefix
 
 # Resource Limits
 resources:
@@ -46,9 +54,10 @@ resources:
 # Security Context
 podSecurityContext:
   fsGroup: 0
-  runAsUser: 1000
 
-securityContext: {}
+securityContext:
+  runAsUser: 1000
+  runAsNonRoot: false
 
 # Service Account
 serviceAccount:
@@ -59,7 +68,19 @@ serviceAccount:
 # Pod Annotations
 podAnnotations:
   description: "Joget DX - Business Process & Workflow Engine"
-  database.connection: "postgresql://joget_user:joget_password@postgresql:5432/joget"
+
+# Environment Variables for Database Connection
+extraEnvVars:
+  - name: DB_HOST
+    value: "postgresql"
+  - name: DB_PORT
+    value: "5432"
+  - name: DB_NAME
+    value: "joget"
+  - name: DB_USER
+    value: "joget_user"
+  - name: DB_PASSWORD
+    value: "joget_password"
 
 # Autoscaling (disabled for development)
 autoscaling:
@@ -71,10 +92,6 @@ autoscaling:
 # Image Pull Secrets
 imagePullSecrets: []
 
-# Name Overrides
-nameOverride: ""
-fullnameOverride: ""
-
 # Node Selection
 nodeSelector: {}
 
@@ -84,16 +101,40 @@ tolerations: []
 # Affinity
 affinity: {}
 
----
-# Optional: Database Connection ConfigMap for Joget
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: joget-db-config
-  namespace: joget
-data:
-  database-host: "postgresql"
-  database-port: "5432"
-  database-name: "joget"
-  database-user: "joget_user"
-  connection-url: "jdbc:postgresql://postgresql:5432/joget"
+# Host aliases for database connectivity
+hostAliases: []
+
+# Additional volumes
+extraVolumes: []
+extraVolumeMounts: []
+
+# Probe configurations
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /jw
+    port: 8080
+  initialDelaySeconds: 180
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 6
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /jw
+    port: 8080
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+startupProbe:
+  enabled: true
+  httpGet:
+    path: /jw
+    port: 8080
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 30
