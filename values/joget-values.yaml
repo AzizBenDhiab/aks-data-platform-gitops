@@ -1,56 +1,40 @@
 # values/joget-values.yaml
-# Joget DX using Bitnami Tomcat as base
+# Joget DX Configuration for Data Platform
 
-# Global configuration
-global:
-  imageRegistry: ""
-  imagePullSecrets: []
-  storageClass: "managed-csi"
-
-# Tomcat configuration
-image:
-  registry: docker.io
-  repository: jogetworkflow/joget-dx8-tomcat9
-  tag: "8.1.1"
-  pullPolicy: IfNotPresent
-  pullSecrets: []
-
-# Deployment configuration
+# Deployment Configuration
 replicaCount: 1
 
-# Service configuration
+# Persistent Volume Configuration
+pvc:
+  accessMode: ReadWriteOnce
+  storage: 10Gi
+  storageClassName: "managed-csi"
+
+# Joget Image Configuration
+image:
+  repository: jogetworkflow/joget-dx8-tomcat9
+  pullPolicy: IfNotPresent
+  tag: "8.1.1"
+  volumePath: /opt/joget/wflow
+
+# Service Configuration
 service:
   type: ClusterIP
-  ports:
-    http: 8080
-    https: 9080
-  nodePorts:
-    http: ""
-    https: ""
-  sessionAffinity: None
-  sessionAffinityConfig: {}
-  clusterIP: ""
-  loadBalancerIP: ""
-  loadBalancerSourceRanges: []
-  externalTrafficPolicy: Cluster
-  annotations: {}
-  extraPorts: []
+  http:
+    port: 8080
+  https:
+    port: 9080
 
-# Persistence configuration
-persistence:
-  enabled: true
-  storageClass: "managed-csi"
-  accessModes:
-    - ReadWriteOnce
-  size: 10Gi
-  dataSource: {}
-  existingClaim: ""
-  selector: {}
-  annotations: {}
-  mountPath: /opt/joget/wflow
-  subPath: ""
+# Ingress Configuration (disabled for development)
+ingress:
+  enabled: false
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/affinity: cookie
+  hosts:
+    - host: joget.local
 
-# Resource limits
+# Resource Limits
 resources:
   limits:
     memory: 2Gi
@@ -59,118 +43,39 @@ resources:
     memory: 1Gi
     cpu: 500m
 
-# Security context
+# Security Context
 podSecurityContext:
-  enabled: true
   fsGroup: 0
-
-containerSecurityContext:
-  enabled: true
   runAsUser: 1000
-  runAsNonRoot: false
 
-# Environment variables for database connection
-extraEnvVars:
-  - name: DB_HOST
-    value: "postgresql"
-  - name: DB_PORT
-    value: "5432"
-  - name: DB_NAME
-    value: "joget"
-  - name: DB_USER
-    value: "joget_user"
-  - name: DB_PASSWORD
-    value: "joget_password"
-  - name: JDBC_URL
-    value: "jdbc:postgresql://postgresql:5432/joget"
+securityContext: {}
 
-# Extra volumes for Joget data
-extraVolumes: []
-extraVolumeMounts: []
-
-# Init containers
-initContainers: []
-
-# Liveness and readiness probes
-livenessProbe:
-  enabled: true
-  httpGet:
-    path: /jw
-    port: http
-  initialDelaySeconds: 180
-  periodSeconds: 30
-  timeoutSeconds: 5
-  failureThreshold: 6
-  successThreshold: 1
-
-readinessProbe:
-  enabled: true
-  httpGet:
-    path: /jw
-    port: http
-  initialDelaySeconds: 60
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 6
-  successThreshold: 1
-
-startupProbe:
-  enabled: true
-  httpGet:
-    path: /jw
-    port: http
-  initialDelaySeconds: 60
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 30
-  successThreshold: 1
-
-# Ingress configuration
-ingress:
-  enabled: false
-  pathType: ImplementationSpecific
-  apiVersion: ""
-  hostname: joget.local
-  path: /
+# Service Account
+serviceAccount:
+  create: true
   annotations: {}
-  tls: false
-  selfSigned: false
-  extraHosts: []
-  extraPaths: []
-  extraTls: []
-  secrets: []
-  ingressClassName: ""
-  extraRules: []
+  name: ""
 
-# Autoscaling
+# Pod Annotations
+podAnnotations:
+  description: "Joget DX - Business Process & Workflow Engine"
+  database.connection: "postgresql://joget_user:joget_password@postgresql:5432/joget"
+
+# Autoscaling (disabled for development)
 autoscaling:
   enabled: false
   minReplicas: 1
-  maxReplicas: 11
-  targetCPU: 50
-  targetMemory: 50
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
 
-# Pod disruption budget
-pdb:
-  create: false
-  minAvailable: 1
-  maxUnavailable: ""
+# Image Pull Secrets
+imagePullSecrets: []
 
-# ServiceAccount
-serviceAccount:
-  create: true
-  name: ""
-  annotations: {}
-  automountServiceAccountToken: true
+# Name Overrides
+nameOverride: ""
+fullnameOverride: ""
 
-# Pod annotations
-podAnnotations:
-  description: "Joget DX - Business Process & Workflow Engine"
-
-# Pod labels
-podLabels: {}
-
-# Node selection
+# Node Selection
 nodeSelector: {}
 
 # Tolerations
@@ -178,49 +83,6 @@ tolerations: []
 
 # Affinity
 affinity: {}
-
-# Pod anti-affinity preset
-podAntiAffinityPreset: soft
-
-# Node anti-affinity preset
-nodeAffinityPreset:
-  type: ""
-  key: ""
-  values: []
-
-# Priority class
-priorityClassName: ""
-
-# Topology spread constraints
-topologySpreadConstraints: []
-
-# Scheduler name
-schedulerName: ""
-
-# Termination grace period
-terminationGracePeriodSeconds: ""
-
-# Lifecycle hooks
-lifecycleHooks: {}
-
-# Extra containers
-extraContainers: []
-
-# Pod security policy
-podSecurityPolicy:
-  enabled: false
-
-# RBAC configuration
-rbac:
-  create: false
-
-# Network policies
-networkPolicy:
-  enabled: false
-
-# Metrics configuration
-metrics:
-  enabled: false
 
 ---
 # Optional: Database Connection ConfigMap for Joget
