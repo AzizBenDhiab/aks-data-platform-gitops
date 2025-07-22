@@ -1,0 +1,383 @@
+# values/kobotoolbox-values.yaml
+# KoboToolbox Complete Stack with Dedicated Databases
+
+# Global Configuration
+global:
+  domain: "kobotoolbox.local"
+  https: false # Development setting
+
+# ==========================================
+# DEDICATED POSTGRESQL FOR KOBOTOOLBOX
+# ==========================================
+postgresql:
+  enabled: true # Deploy dedicated PostgreSQL
+  auth:
+    postgresPassword: "kobo-postgres-admin"
+    database: "kobotoolbox"
+    username: "kobo_user"
+    password: "kobo_password"
+
+  primary:
+    # Persistence for survey data
+    persistence:
+      enabled: true
+      size: 20Gi # Larger for survey data storage
+      storageClass: "managed-csi"
+      accessModes:
+        - ReadWriteOnce
+
+    # Resource allocation for survey workloads
+    resources:
+      limits:
+        memory: 1Gi
+        cpu: 500m
+      requests:
+        memory: 512Mi
+        cpu: 250m
+
+    # Service configuration
+    service:
+      ports:
+        postgresql: 5432
+
+    # Database initialization
+    initdb:
+      scripts:
+        01-create-kobo-db.sql: |
+          -- Create KoboToolbox database and user
+          CREATE DATABASE kobotoolbox;
+          CREATE USER kobo_user WITH PASSWORD 'kobo_password';
+          GRANT ALL PRIVILEGES ON DATABASE kobotoolbox TO kobo_user;
+          ALTER USER kobo_user CREATEDB;
+
+          -- Connect to kobotoolbox database
+          \c kobotoolbox;
+          GRANT ALL ON SCHEMA public TO kobo_user;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO kobo_user;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO kobo_user;
+
+  # Disable read replicas for development
+  readReplicas:
+    replicaCount: 0
+
+  # Security settings
+  volumePermissions:
+    enabled: true
+
+  # Disable metrics for development
+  metrics:
+    enabled: false
+
+# ==========================================
+# DEDICATED MONGODB FOR ENKETO FORMS
+# ==========================================
+mongodb:
+  enabled: true # Deploy dedicated MongoDB
+  auth:
+    enabled: false # Disable auth for development
+
+  # Persistence for form data
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: "managed-csi"
+
+  # Resource allocation
+  resources:
+    limits:
+      memory: 512Mi
+      cpu: 300m
+    requests:
+      memory: 256Mi
+      cpu: 150m
+
+  # Service configuration
+  service:
+    ports:
+      mongodb: 27017
+
+# ==========================================
+# DEDICATED REDIS FOR CACHING
+# ==========================================
+redis:
+  enabled: true # Deploy dedicated Redis
+  auth:
+    enabled: false # Disable auth for development
+
+  master:
+    # Persistence for session data
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClass: "managed-csi"
+
+    # Resource allocation
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 200m
+      requests:
+        memory: 128Mi
+        cpu: 100m
+
+    # Service configuration
+    service:
+      ports:
+        redis: 6379
+
+# ==========================================
+# KOBOTOOLBOX APPLICATIONS
+# ==========================================
+
+# KPI (Frontend - Form Builder & Data Management)
+kpi:
+  image:
+    repository: kobotoolbox/kpi
+    tag: "2.024.20"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  # Resource allocation for form management
+  resources:
+    limits:
+      memory: 2Gi
+      cpu: 1000m
+    requests:
+      memory: 1Gi
+      cpu: 500m
+
+  # Database connection
+  environment:
+    # PostgreSQL connection
+    KOBO_PSQL_DB_NAME: "kobotoolbox"
+    KOBO_PSQL_DB_USER: "kobo_user"
+    KOBO_PSQL_DB_PASS: "kobo_password"
+    KOBO_PSQL_DB_HOST: "kobotoolbox-postgresql" # Internal service
+    KOBO_PSQL_DB_PORT: "5432"
+
+    # Redis configuration
+    REDIS_SESSION_URL: "redis://kobotoolbox-redis-master:6379/1"
+    REDIS_LOCK_URL: "redis://kobotoolbox-redis-master:6379/2"
+    REDIS_CACHE_URL: "redis://kobotoolbox-redis-master:6379/0"
+
+    # Django configuration
+    DJANGO_SECRET_KEY: "kobo-secret-key-change-for-production"
+    DJANGO_DEBUG: "False"
+    DJANGO_ALLOWED_HOSTS: "*"
+
+    # KoboToolbox configuration
+    KOBO_SUPERUSER_USERNAME: "admin"
+    KOBO_SUPERUSER_PASSWORD: "admin123"
+    KOBO_SUPERUSER_EMAIL: "admin@kobotoolbox.local"
+
+  # Persistent storage for uploaded files
+  persistence:
+    enabled: true
+    size: 15Gi
+    storageClass: "managed-csi"
+    accessMode: ReadWriteOnce
+    mountPath: "/srv/src/kpi/media"
+
+# KoBoCAT (Backend API & Data Collection)
+kobocat:
+  image:
+    repository: kobotoolbox/kobocat
+    tag: "2.024.20"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  # Resource allocation for API operations
+  resources:
+    limits:
+      memory: 1Gi
+      cpu: 500m
+    requests:
+      memory: 512Mi
+      cpu: 250m
+
+  # Database connection
+  environment:
+    # PostgreSQL connection (shared with KPI)
+    KOBO_PSQL_DB_NAME: "kobotoolbox"
+    KOBO_PSQL_DB_USER: "kobo_user"
+    KOBO_PSQL_DB_PASS: "kobo_password"
+    KOBO_PSQL_DB_HOST: "kobotoolbox-postgresql"
+    KOBO_PSQL_DB_PORT: "5432"
+
+    # Django configuration
+    DJANGO_SECRET_KEY: "kobo-secret-key-change-for-production"
+    DJANGO_DEBUG: "False"
+    DJANGO_ALLOWED_HOSTS: "*"
+
+    # Integration with KPI
+    KPI_URL: "http://kobotoolbox-kpi"
+
+  # Persistent storage for form submissions
+  persistence:
+    enabled: true
+    size: 15Gi
+    storageClass: "managed-csi"
+    accessMode: ReadWriteOnce
+    mountPath: "/srv/src/kobocat/media"
+
+# Enketo (Form Rendering Engine)
+enketo:
+  image:
+    repository: kobotoolbox/enketo-express
+    tag: "2.9.1"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  # Resource allocation for form rendering
+  resources:
+    limits:
+      memory: 1Gi
+      cpu: 500m
+    requests:
+      memory: 512Mi
+      cpu: 250m
+
+  # Service connections
+  environment:
+    # Redis connection
+    REDIS_MAIN_URL: "redis://kobotoolbox-redis-master:6379/3"
+    REDIS_CACHE_URL: "redis://kobotoolbox-redis-master:6379/4"
+
+    # MongoDB connection
+    MONGO_URL: "mongodb://kobotoolbox-mongodb:27017/enketo"
+
+    # API integration
+    KOBOCAT_URL: "http://kobotoolbox-kobocat"
+    KPI_URL: "http://kobotoolbox-kpi"
+
+    # Enketo configuration
+    ENKETO_API_TOKEN: "enketo-api-token-change-for-production"
+    ENKETO_ENCRYPTION_KEY: "enketo-encryption-key"
+
+# NGINX (Load Balancer & Proxy)
+nginx:
+  image:
+    repository: nginx
+    tag: "1.25-alpine"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  # Resource allocation for proxy
+  resources:
+    limits:
+      memory: 256Mi
+      cpu: 200m
+    requests:
+      memory: 128Mi
+      cpu: 100m
+
+  # Configuration for routing between services
+  configuration:
+    # Route /api requests to KoBoCAT
+    # Route /me, /accounts requests to KPI
+    # Route /x requests to Enketo
+    # Default to KPI
+
+# ==========================================
+# SERVICE CONFIGURATION
+# ==========================================
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 80
+
+# Ingress (disabled for development)
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-body-size: "200m"
+    nginx.ingress.kubernetes.io/client-max-body-size: "200m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+  hosts:
+    - host: kobotoolbox.local
+      paths:
+        - path: /
+          pathType: Prefix
+
+# ==========================================
+# SECURITY & OPERATIONS
+# ==========================================
+
+# Security Context
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: "kobotoolbox"
+
+# Health Checks
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 180
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 120
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+startupProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 40 # Allow 10 minutes for startup
+
+# Pod Disruption Budget (for production)
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# Horizontal Pod Autoscaler (disabled for development)
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+# Node Selection
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# ==========================================
+# BACKUP CONFIGURATION (Future Enhancement)
+# ==========================================
+backup:
+  enabled: false
+  schedule: "0 2 * * *" # Daily at 2 AM
+  retention: 30 # Keep 30 days of backups
