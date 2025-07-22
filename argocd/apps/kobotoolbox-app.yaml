@@ -1,20 +1,39 @@
-# argocd/kobotoolbox-app.yaml
+# argocd/kobotoolbox-app.yaml - FIXED VERSION
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: kobotoolbox
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "3" # Deploy after other applications
+    argocd.argoproj.io/sync-wave: "3"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   sources:
     - repoURL: https://one-acre-fund.github.io/oaf-public-charts
-      targetRevision: "0.7.4" # Latest stable version
+      targetRevision: "0.7.4"
       chart: kobotoolbox
       helm:
+        # FORCE storage class overrides at Helm level
+        parameters:
+          - name: postgresql.primary.persistence.storageClass
+            value: "managed-csi"
+          - name: mongodb.persistence.storageClass
+            value: "managed-csi"
+          - name: redis.master.persistence.storageClass
+            value: "managed-csi"
+          - name: rediscache.master.persistence.storageClass
+            value: "managed-csi"
+          - name: redismain.master.persistence.storageClass
+            value: "managed-csi"
+          # Fix image issues
+          - name: enketo.image.tag
+            value: "2.8.0"
+          - name: kpi.image.tag
+            value: "2.024.18"
+          - name: kobocat.image.tag
+            value: "2.024.18"
         valueFiles:
           - $values/values/kobotoolbox-values.yaml
     - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
