@@ -80,7 +80,7 @@ mongodb:
   persistence:
     enabled: true
     size: 10Gi
-    storageClass: "managed-csi"
+    storageClass: ""
 
   # Resource allocation
   resources:
@@ -109,7 +109,7 @@ redis:
     persistence:
       enabled: true
       size: 5Gi
-      storageClass: "managed-csi"
+      storageClass: ""
 
     # Resource allocation
     resources:
@@ -153,7 +153,7 @@ kpi:
     KOBO_PSQL_DB_NAME: "kobotoolbox"
     KOBO_PSQL_DB_USER: "kobo_user"
     KOBO_PSQL_DB_PASS: "kobo_password"
-    KOBO_PSQL_DB_HOST: "kobotoolbox-postgresql" # Internal service
+    KOBO_PSQL_DB_HOST: "kobotoolbox-postgresql"
     KOBO_PSQL_DB_PORT: "5432"
 
     # Redis configuration
@@ -175,7 +175,7 @@ kpi:
   persistence:
     enabled: true
     size: 15Gi
-    storageClass: "managed-csi"
+    storageClass: ""
     accessMode: ReadWriteOnce
     mountPath: "/srv/src/kpi/media"
 
@@ -218,7 +218,7 @@ kobocat:
   persistence:
     enabled: true
     size: 15Gi
-    storageClass: "managed-csi"
+    storageClass: ""
     accessMode: ReadWriteOnce
     mountPath: "/srv/src/kobocat/media"
 
