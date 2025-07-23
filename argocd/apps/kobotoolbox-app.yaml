@@ -45,14 +45,7 @@ spec:
             value: "mongo-admin-123"
           - name: mongodb.auth.password
             value: "mongo-user-123"
-          - name: shared.initContainers[0].image
-            value: "busybox:1.35"
-          - name: shared.initContainers[0].command[0]
-            value: "/bin/sh"
-          - name: shared.initContainers[0].command[1]
-            value: "-c"
-          - name: shared.initContainers[0].command[2]
-            value: "until nc -z kobotoolbox-postgresql 5432 && nc -z kobotoolbox-mongodb 27017; do echo 'Waiting for databases...'; sleep 3; done; echo 'Databases ready!'"
+
         valueFiles:
           - $values/values/kobotoolbox-values.yaml
     - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
