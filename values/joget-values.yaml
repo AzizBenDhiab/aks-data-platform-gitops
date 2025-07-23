@@ -1,10 +1,6 @@
 # values/joget-values.yaml
 # Joget DX Configuration with Template Fix
 
-# CRITICAL: These name overrides fix the template error
-nameOverride: "joget-dx8"
-fullnameOverride: "joget-dx8"
-
 # Deployment Configuration
 replicaCount: 1
 

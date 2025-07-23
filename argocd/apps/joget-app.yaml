@@ -1,46 +1,61 @@
-# # argocd/joget-app.yaml
-# apiVersion: argoproj.io/v1alpha1
-# kind: Application
-# metadata:
-#   name: joget
-#   namespace: argocd
-#   annotations:
-#     argocd.argoproj.io/sync-wave: "2" # Deploy after PostgreSQL
-#   finalizers:
-#     - resources-finalizer.argocd.argoproj.io
-# spec:
-#   project: default
-#   sources:
-#     - repoURL: https://jogetworkflow.github.io/helm-joget/charts/
-#       targetRevision: "*"
-#       chart: joget
-#       helm:
-#         releaseName: joget-dx8 # Important: This helps with template naming
-#         parameters:
-#           - name: nameOverride
-#             value: "joget-dx8"
-#           - name: fullnameOverride
-#             value: "joget-dx8"
-#         valueFiles:
-#           - $values/values/joget-values.yaml
-#     - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
-#       targetRevision: HEAD
-#       ref: values
-#   destination:
-#     server: https://kubernetes.default.svc
-#     namespace: joget
-#   syncPolicy:
-#     automated:
-#       prune: true
-#       selfHeal: true
-#       allowEmpty: false
-#     syncOptions:
-#       - CreateNamespace=true
-#       - PrunePropagationPolicy=foreground
-#     retry:
-#       limit: 5
-#       backoff:
-#         duration: 5s
-#         factor: 2
-#         maxDuration: 5m
-#   revisionHistoryLimit: 3
+# argocd/joget-app.yaml - TEST VERSION
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: joget-test
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://jogetworkflow.github.io/helm-joget/charts/
+    targetRevision: "*" # Get latest version
+    chart: joget
+    helm:
+      # Try without the problematic parameters first
+      values: |
+        replicaCount: 1
+
+        image:
+          repository: jogetworkflow/joget-dx8-tomcat9
+          tag: "8.1.1"
+          pullPolicy: IfNotPresent
+
+        service:
+          type: ClusterIP
+          ports:
+            http: 8080
+            https: 9080
+
+        # Use default storage class
+        pvc:
+          accessMode: ReadWriteOnce
+          storage: 10Gi
+          storageClassName: ""
+
+        resources:
+          limits:
+            memory: 2Gi
+            cpu: 1000m
+          requests:
+            memory: 1Gi
+            cpu: 500m
+
+        ingress:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: joget-test
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 3
