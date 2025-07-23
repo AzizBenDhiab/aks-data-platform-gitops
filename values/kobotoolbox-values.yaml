@@ -1,37 +1,6 @@
 # values/kobotoolbox-values.yaml - MINIMAL WORKING VERSION
 # KoboToolbox Configuration - All critical settings handled by Helm parameters
-shared:
-  initContainers:
-    - name: wait-db
-      image: busybox:1.35  # Working image with proper shell
-      command: ["/bin/sh"]
-      args: 
-        - "-c"
-        - |
-          echo "Waiting for PostgreSQL..."
-          until nc -z ${POSTGRES_HOST} ${POSTGRES_PORT}; do
-            echo "PostgreSQL not ready, waiting..."
-            sleep 3
-          done
-          echo "PostgreSQL is ready!"
-          
-          echo "Waiting for MongoDB..."
-          until nc -z ${KOBO_MONGO_HOST} ${KOBO_MONGO_PORT}; do
-            echo "MongoDB not ready, waiting..."
-            sleep 3
-          done
-          echo "MongoDB is ready!"
-          
-          echo "All databases are ready, proceeding..."
-      env:
-        - name: POSTGRES_HOST
-          value: "kobotoolbox-postgresql"
-        - name: POSTGRES_PORT
-          value: "5432"
-        - name: KOBO_MONGO_HOST
-          value: "kobotoolbox-mongodb"
-        - name: KOBO_MONGO_PORT
-          value: "27017"
+
 # Basic resource configuration
 general:
   # Most settings overridden by Helm parameters
