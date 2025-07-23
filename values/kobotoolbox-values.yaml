@@ -1,264 +1,70 @@
-# values/kobotoolbox-values.yaml - SIMPLIFIED WORKING VERSION
-# KoboToolbox Configuration - FIXED STORAGE
+# values/kobotoolbox-values.yaml - MINIMAL WORKING VERSION
+# KoboToolbox Configuration - All critical settings handled by Helm parameters
 
-# ==========================================
-# POSTGRESQL DATABASE
-# ==========================================
-postgresql:
-  enabled: true
-  auth:
-    postgresPassword: "kobo-postgres-admin"
-    database: "kobotoolbox"
-    username: "kobo_user"
-    password: "kobo_password"
+# Basic resource configuration
+general:
+  # Most settings overridden by Helm parameters
+  replicas: 1
+  debug: false
+  serviceType: ClusterIP
 
-  primary:
-    persistence:
-      enabled: true
-      size: 20Gi
-      storageClass: "managed-csi" # Explicitly set
-      accessModes:
-        - ReadWriteOnce
-
-    resources:
-      limits:
-        memory: 1Gi
-        cpu: 500m
-      requests:
-        memory: 512Mi
-        cpu: 250m
-
-  readReplicas:
-    replicaCount: 0
-
-  volumePermissions:
-    enabled: true
-
-  metrics:
-    enabled: false
-
-# ==========================================
-# MONGODB DATABASE
-# ==========================================
-mongodb:
-  enabled: true
-  auth:
-    enabled: false
-
-  persistence:
-    enabled: true
-    size: 10Gi
-    storageClass: "managed-csi" # Explicitly set
-    accessModes:
-      - ReadWriteOnce
-
-  resources:
-    limits:
-      memory: 512Mi
-      cpu: 300m
-    requests:
-      memory: 256Mi
-      cpu: 150m
-
-# ==========================================
-# REDIS CACHE
-# ==========================================
-redis:
-  enabled: false # Disable subchart redis
-
-# Custom Redis instances
-rediscache:
-  enabled: true
-  auth:
-    enabled: false
-
-  master:
-    persistence:
-      enabled: true
-      size: 5Gi
-      storageClass: "managed-csi" # Explicitly set
-      accessModes:
-        - ReadWriteOnce
-
-    resources:
-      limits:
-        memory: 256Mi
-        cpu: 200m
-      requests:
-        memory: 128Mi
-        cpu: 100m
-
-redismain:
-  enabled: true
-  auth:
-    enabled: false
-
-  master:
-    persistence:
-      enabled: true
-      size: 5Gi
-      storageClass: "managed-csi" # Explicitly set
-      accessModes:
-        - ReadWriteOnce
-
-    resources:
-      limits:
-        memory: 256Mi
-        cpu: 200m
-      requests:
-        memory: 128Mi
-        cpu: 100m
-
-# ==========================================
-# KOBOTOOLBOX APPLICATIONS
-# ==========================================
-
-# Global configuration
-global:
-  domain: "kobotoolbox.local"
-  https: false
-
-# KPI (Frontend)
+# Application images - use stable versions
 kpi:
   image:
-    repository: kobotoolbox/kpi
-    tag: "2.024.18" # Stable version
-    pullPolicy: IfNotPresent
+    name: kobotoolbox/kpi
+    tag: "2.022.24d"  # From official values
 
-  replicaCount: 1
-
-  resources:
-    limits:
-      memory: 2Gi
-      cpu: 1000m
-    requests:
-      memory: 1Gi
-      cpu: 500m
-
-  persistence:
-    enabled: true
-    size: 15Gi
-    storageClass: "managed-csi" # Explicitly set
-    accessMode: ReadWriteOnce
-
-# KoBoCAT (Backend)
 kobocat:
   image:
-    repository: kobotoolbox/kobocat
-    tag: "2.024.18" # Stable version
-    pullPolicy: IfNotPresent
+    name: kobotoolbox/kobocat
+    tag: "2.022.24a"  # From official values
 
-  replicaCount: 1
-
-  resources:
-    limits:
-      memory: 1Gi
-      cpu: 500m
-    requests:
-      memory: 512Mi
-      cpu: 250m
-
-  persistence:
-    enabled: true
-    size: 15Gi
-    storageClass: "managed-csi" # Explicitly set
-    accessMode: ReadWriteOnce
-
-# Enketo (Form Renderer)
 enketo:
   image:
-    repository: kobotoolbox/enketo-express
-    tag: "2.8.0" # More stable version
-    pullPolicy: IfNotPresent
+    name: enketo/enketo-express
+    tag: "3.0.4"  # From official values
+  replicas: 1
 
-  replicaCount: 1
-
-  resources:
-    limits:
-      memory: 1Gi
-      cpu: 500m
-    requests:
-      memory: 512Mi
-      cpu: 250m
-
-# NGINX (Proxy)
 nginx:
   image:
-    repository: nginx
-    tag: "1.25-alpine"
-    pullPolicy: IfNotPresent
+    name: nginx
+    tag: "1.21"  # From official values
 
-  replicaCount: 1
-
-  resources:
-    limits:
-      memory: 256Mi
-      cpu: 200m
-    requests:
-      memory: 128Mi
-      cpu: 100m
-
-# ==========================================
-# SERVICE CONFIGURATION
-# ==========================================
-service:
-  type: ClusterIP
-  port: 80
-  targetPort: 80
-
+# Service configuration
 ingress:
   enabled: false
 
-# ==========================================
-# SECURITY & OPERATIONS
-# ==========================================
-podSecurityContext:
-  fsGroup: 1000
-
-securityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  allowPrivilegeEscalation: false
-
-serviceAccount:
-  create: true
-  annotations: {}
-  name: "kobotoolbox"
-
-# Health checks with longer timeouts
-livenessProbe:
-  httpGet:
-    path: /
-    port: http
-  initialDelaySeconds: 300
-  periodSeconds: 30
-  timeoutSeconds: 10
-  failureThreshold: 3
-
-readinessProbe:
-  httpGet:
-    path: /
-    port: http
-  initialDelaySeconds: 180
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 3
-
-startupProbe:
-  httpGet:
-    path: /
-    port: http
-  initialDelaySeconds: 60
-  periodSeconds: 15
-  timeoutSeconds: 5
-  failureThreshold: 60 # Allow 15 minutes for startup
-
-podDisruptionBudget:
+# Monitoring (disable for development)
+uwsgiExporter:
   enabled: false
 
-autoscaling:
+flower:
   enabled: false
 
-nodeSelector: {}
-tolerations: []
-affinity: {}
+probes:
+  enabled: true
+
+# Priority class (optional, can remove if not needed)
+priorityClass: ""
+
+# SMTP (disabled for development)
+smtp:
+  host: ""
+  user: ""
+  password: ""
+  from: ""
+
+# External services (disabled for development)
+external:
+  google:
+    apiKey: ""
+    analyticsToken: ""
+  ravenDSN:
+    kobocat: ""
+    kpi: ""
+    kpiJs: ""
+
+# Sentry configuration
+general:
+  sentry:
+    environment: development

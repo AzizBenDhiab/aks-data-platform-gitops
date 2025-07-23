@@ -1,4 +1,4 @@
-# argocd/kobotoolbox-app.yaml - FIXED VERSION
+# argocd/kobotoolbox-app.yaml - FINAL WORKING VERSION
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -15,25 +15,36 @@ spec:
       targetRevision: "0.7.4"
       chart: kobotoolbox
       helm:
-        # FORCE storage class overrides at Helm level
+        # THE KEY FIX: Override the global storageClass
         parameters:
-          - name: postgresql.primary.persistence.storageClass
+          - name: global.storageClass
             value: "managed-csi"
-          - name: mongodb.persistence.storageClass
-            value: "managed-csi"
-          - name: redis.master.persistence.storageClass
-            value: "managed-csi"
-          - name: rediscache.master.persistence.storageClass
-            value: "managed-csi"
-          - name: redismain.master.persistence.storageClass
-            value: "managed-csi"
-          # Fix image issues
-          - name: enketo.image.tag
-            value: "2.8.0"
-          - name: kpi.image.tag
-            value: "2.024.18"
-          - name: kobocat.image.tag
-            value: "2.024.18"
+          # Also override Redis password to avoid issues
+          - name: global.redis.password
+            value: "redis-password-123"
+          # Override domain settings
+          - name: general.externalDomain
+            value: "kobotoolbox.local"
+          - name: general.externalScheme
+            value: "http"
+          # Set admin credentials
+          - name: general.superUser.username
+            value: "admin"
+          - name: general.superUser.password
+            value: "admin123"
+          # Enable media storage
+          - name: general.mediaStorage.enabled
+            value: "false"
+          # PostgreSQL settings
+          - name: postgresql.auth.postgresPassword
+            value: "postgres-admin-123"
+          - name: postgresql.auth.password
+            value: "kobo-user-123"
+          # MongoDB settings
+          - name: mongodb.auth.rootPassword
+            value: "mongo-admin-123"
+          - name: mongodb.auth.password
+            value: "mongo-user-123"
         valueFiles:
           - $values/values/kobotoolbox-values.yaml
     - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
