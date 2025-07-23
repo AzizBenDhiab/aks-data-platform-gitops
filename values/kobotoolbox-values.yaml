@@ -1,6 +1,10 @@
 # values/kobotoolbox-values.yaml - MINIMAL WORKING VERSION
 # KoboToolbox Configuration - All critical settings handled by Helm parameters
-
+kobo:
+  initContainers:
+    - name: wait-db
+      image: busybox:1.35
+      command: ["/bin/sh", "-c", "until nc -z kobotoolbox-postgresql 5432 && nc -z kobotoolbox-mongodb 27017; do echo 'Waiting...'; sleep 3; done"]
 # Basic resource configuration
 general:
   # Most settings overridden by Helm parameters
