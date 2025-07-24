@@ -1,4 +1,4 @@
-# argocd/nifi-test-app.yaml
+# argocd/nifi-test-app.yaml - HTTP ONLY VERSION
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -16,7 +16,6 @@ spec:
     chart: nifi
     helm:
       values: |
-        # Basic configuration for testing
         replicaCount: 1
 
         image:
@@ -24,20 +23,17 @@ spec:
           tag: "1.23.2"
           pullPolicy: IfNotPresent
 
-        # Storage - use our proven storage class
         persistence:
           enabled: true
           storageClass: "managed-csi"
           accessMode: ReadWriteOnce
-          size: 10Gi
+          size: 3Gi
 
-        # Service configuration
         service:
           type: ClusterIP
           httpPort: 8080
-          httpsPort: 8443
+          httpsPort: null
 
-        # Resource limits
         resources:
           limits:
             memory: 2Gi
@@ -46,24 +42,32 @@ spec:
             memory: 1Gi
             cpu: 500m
 
-        # Start with simple configuration
-        zookeeper:
-          enabled: false  # Single node for now
+        # DISABLE SSL COMPLETELY
+        properties:
+          isSecure: false
+          httpPort: 8080
+          httpsPort: ""
+          webProxyHost: ""
+          needClientAuth: false
+          webHttpsHost: ""
+          webHttpHost: "0.0.0.0"
 
-        # Security - basic setup
+        # Simple authentication
         auth:
-          enabled: true
-          admin: admin
-          password: admin123
+          singleUser:
+            username: admin
+            password: admin123
 
-        # Ingress disabled for testing
-        ingress:
+        # Disable clustering to avoid complexity
+        zookeeper:
           enabled: false
           
-        # Node selection
-        nodeSelector: {}
-        tolerations: []
-        affinity: {}
+        # Reduce storage requirements
+        persistence:
+          size: 3Gi
+          
+        ingress:
+          enabled: false
   destination:
     server: https://kubernetes.default.svc
     namespace: nifi-test
