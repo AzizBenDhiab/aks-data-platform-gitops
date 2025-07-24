@@ -1,8 +1,8 @@
-# argocd/nifi-test-app.yaml - HTTP ONLY VERSION
+# argocd/nifi-prod-app.yaml - PRODUCTION SSL WITH CETIC CHART
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: nifi-test
+  name: nifi-prod
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "3"
@@ -16,6 +16,7 @@ spec:
     chart: nifi
     helm:
       values: |
+        # PRODUCTION CONFIGURATION
         replicaCount: 1
 
         image:
@@ -23,62 +24,216 @@ spec:
           tag: "1.23.2"
           pullPolicy: IfNotPresent
 
-        persistence:
-          enabled: true
-          storageClass: "managed-csi"
-          accessMode: ReadWriteOnce
-          size: 3Gi
-
-        service:
-          type: ClusterIP
-          httpPort: 8080
-          httpsPort: null
-
-        resources:
-          limits:
-            memory: 2Gi
-            cpu: 1000m
-          requests:
-            memory: 1Gi
-            cpu: 500m
-
-        # DISABLE SSL COMPLETELY
+        # PROPER SSL CONFIGURATION
         properties:
-          isSecure: false
-          httpPort: 8080
-          httpsPort: ""
-          webProxyHost: ""
-          needClientAuth: false
-          webHttpsHost: ""
-          webHttpHost: "0.0.0.0"
+          # SSL Properties  
+          sensitiveKey: "ProductionNiFiSecretKey2024"  # 12+ chars required
+          algorithm: NIFI_PBKDF2_AES_GCM_256
+          externalSecure: false  # We handle SSL internally
+          httpsPort: 8443
+          webProxyHost: "nifi-prod.data-platform.local"  # Clean hostname
+          
+          # Disable problematic cluster features for single node
+          isNode: false
+          clusterPort: 6007
+          
+          # Archive and storage settings
+          archiveMaxRetentionPeriod: "7 days"
+          archiveMaxUsagePercentage: "80%"
+          provenanceStorage: "10 GB"
+          provenanceMaxStorageTime: "14 days"
+          flowArchiveMaxTime: "30 days"
+          flowArchiveMaxStorage: "1 GB"
+          
+          # Network interface configuration
+          safetyValve:
+            nifi.web.http.network.interface.default: eth0
+            nifi.web.http.network.interface.lo: lo
+            # Force clean hostname for certificate generation
+            nifi.cluster.node.address: nifi-prod-0
+            nifi.remote.input.host: nifi-prod-0
 
-        # Simple authentication
+        # AUTHENTICATION CONFIGURATION
         auth:
+          admin: "CN=admin,OU=NIFI"
+          
+          # SSL Configuration
+          SSL:
+            keystorePasswd: "ProductionKeystore2024"
+            truststorePasswd: "ProductionTruststore2024"
+          
+          # Single user authentication (disable LDAP/OIDC)
           singleUser:
             username: admin
-            password: admin123
+            password: "ProductionNiFi2024Secure!"  # 12+ chars
+          
+          # Disable client certificate auth for simplicity
+          clientAuth:
+            enabled: false
+          
+          # Disable LDAP
+          ldap:
+            enabled: false
+          
+          # Disable OIDC
+          oidc:
+            enabled: false
 
-        # Disable clustering to avoid complexity
-        zookeeper:
+        # DISABLE EXTERNAL CERTIFICATE MANAGERS
+        ca:
           enabled: false
-          
-        # Reduce storage requirements
+
+        certManager:
+          enabled: false
+
+        # SIMPLIFIED ZOOKEEPER (SINGLE NODE)
+        zookeeper:
+          enabled: false  # Disable for single node setup
+          url: ""
+          port: 2181
+
+        # PERSISTENCE CONFIGURATION
         persistence:
-          size: 3Gi
+          enabled: true
+          accessModes: [ReadWriteOnce]
           
+          # Use single volume with subPath for efficiency
+          subPath:
+            enabled: true
+            name: data
+            size: 50Gi
+          
+          # Individual storage sizes (ignored when subPath enabled)
+          configStorage:
+            size: 500Mi
+          authconfStorage:
+            size: 500Mi
+          dataStorage:
+            size: 5Gi
+          flowfileRepoStorage:
+            size: 10Gi
+          contentRepoStorage:
+            size: 15Gi
+          provenanceRepoStorage:
+            size: 15Gi
+          logStorage:
+            size: 2Gi
+
+        # PRODUCTION RESOURCES
+        resources:
+          limits:
+            cpu: 4000m
+            memory: 8Gi
+          requests:
+            cpu: 2000m
+            memory: 4Gi
+
+        # JVM MEMORY CONFIGURATION
+        jvmMemory: 4g
+
+        # SERVICE CONFIGURATION
+        service:
+          type: ClusterIP
+          httpsPort: 8443
+          annotations: {}
+          
+          # Disable additional processor ports
+          processors:
+            enabled: false
+
+        # HEADLESS SERVICE
+        headless:
+          type: ClusterIP
+          annotations:
+            service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+
+        # SECURITY CONTEXT
+        securityContext:
+          runAsUser: 1000
+          fsGroup: 1000
+
+        # STATEFULSET CONFIGURATION
+        sts:
+          podManagementPolicy: Parallel
+          AntiAffinity: soft
+          useHostNetwork: false
+          
+          # Extended startup probe for production
+          startupProbe:
+            enabled: true
+            failureThreshold: 120  # 20 minutes max startup time
+            periodSeconds: 10
+          
+          pod:
+            annotations:
+              security.alpha.kubernetes.io/sysctls: net.ipv4.ip_local_port_range=10000 65000
+          
+          serviceAccount:
+            create: true
+            name: nifi-prod
+            annotations: {}
+
+        # DISABLE INGRESS (WE'LL ADD LATER)
         ingress:
           enabled: false
+
+        # PRODUCTION ENVIRONMENT
+        env:
+          - name: ENVIRONMENT
+            value: "production"
+          - name: NIFI_JVM_HEAP_INIT
+            value: "4g"
+          - name: NIFI_JVM_HEAP_MAX
+            value: "4g"
+
+        # MONITORING (DISABLED FOR NOW)
+        metrics:
+          prometheus:
+            enabled: false
+            port: 9092
+            serviceMonitor:
+              enabled: false
+
+        # REGISTRY (DISABLED FOR NOW)
+        registry:
+          enabled: false
+
+        # NODE SELECTION
+        nodeSelector: {}
+        tolerations: []
+        affinity: {}
+
+        # TERMINATION
+        terminationGracePeriodSeconds: 60
+
+        # SIDECAR LOGGING
+        sidecar:
+          image: busybox
+          tag: "1.32.0"
+          imagePullPolicy: IfNotPresent
+
+        logresources:
+          requests:
+            cpu: 10m
+            memory: 10Mi
+          limits:
+            cpu: 50m
+            memory: 50Mi
   destination:
     server: https://kubernetes.default.svc
-    namespace: nifi-test
+    namespace: nifi-prod
   syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
     syncOptions:
       - CreateNamespace=true
       - PrunePropagationPolicy=foreground
     retry:
-      limit: 3
+      limit: 5
       backoff:
-        duration: 5s
+        duration: 15s
         factor: 2
-        maxDuration: 3m
+        maxDuration: 15m
   revisionHistoryLimit: 3
