@@ -10,6 +10,17 @@ shared:
     BACKUPS_DIR: /srv/backups
   extraSecretEnv: {}
 
+kobo:
+  initContainers:
+    wait-db:
+      command:
+        - dockerize
+        - -timeout=120s
+        - -wait
+        - tcp://${KOBO_MONGO_HOST}:${KOBO_MONGO_PORT}
+        - -wait
+        - tcp://${POSTGRES_HOST}:${POSTGRES_PORT}
+
 # KPI specific environment variables (if needed beyond defaults)
 kpi:
   extraEnv:
@@ -28,8 +39,3 @@ enketo:
   # Use chart default API keys for development
   # Production should use secure random keys
   logoSource: ""
-
-postgresql:
-  # Use chart defaults for PostgreSQL, no need to override
-  auth:
-    host: "{{ .Release.Name }}-postgresql"
