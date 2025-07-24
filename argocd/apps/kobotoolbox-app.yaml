@@ -1,4 +1,4 @@
-# argocd/kobotoolbox-app.yaml - FINAL WORKING VERSION
+# argocd/kobotoolbox-app.yaml - CORRECTED WITH REAL CHART STRUCTURE
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -15,36 +15,161 @@ spec:
       targetRevision: "0.7.4"
       chart: kobotoolbox
       helm:
-        # THE KEY FIX: Override the global storageClass
+        # USING ACTUAL CHART PARAMETER NAMES
         parameters:
+          # CRITICAL: Override the hardcoded global.storageClass
           - name: global.storageClass
             value: "managed-csi"
-          # Also override Redis password to avoid issues
+
+          # Redis configuration (actual chart structure)
           - name: global.redis.password
-            value: "redis-password-123"
-          # Override domain settings
+            value: "redis-secure-password-2024"
+          - name: rediscache.enabled
+            value: "true"
+          - name: rediscache.usePassword
+            value: "true"
+          - name: rediscache.architecture
+            value: "standalone"
+          - name: redismain.enabled
+            value: "true"
+          - name: redismain.usePassword
+            value: "true"
+          - name: redismain.architecture
+            value: "standalone"
+
+          # General configuration (actual chart structure)
           - name: general.externalDomain
             value: "kobotoolbox.local"
           - name: general.externalScheme
             value: "http"
-          # Set admin credentials
+          - name: general.externalPort
+            value: ""
+          - name: general.replicas
+            value: "1"
+          - name: general.debug
+            value: "false"
+          - name: general.serviceType
+            value: "ClusterIP"
+          - name: general.forceInternal
+            value: "false"
+
+          # Super user configuration (actual chart structure)
           - name: general.superUser.username
             value: "admin"
           - name: general.superUser.password
-            value: "admin123"
-          # Enable media storage
+            value: "KoboAdmin2024!"
+
+          # Support email
+          - name: general.supportEmail
+            value: "support@kobotoolbox.local"
+
+          # Django secret (production)
+          - name: general.djangoSecret
+            value: "KoboProductionSecret2024ChangeInProduction"
+
+          # Media storage configuration (actual chart structure)
           - name: general.mediaStorage.enabled
             value: "false"
-          # PostgreSQL settings
+          - name: general.mediaStorage.size
+            value: "10Gi"
+          - name: general.mediaStorage.storageClass
+            value: "managed-csi"
+          - name: general.mediaStorage.accessMode
+            value: "ReadWriteOnce"
+
+          # Sentry configuration
+          - name: general.sentry.environment
+            value: "production"
+
+          # PostgreSQL configuration (actual chart structure)
+          - name: postgresql.enabled
+            value: "true"
+          - name: postgresql.kobocatDatabase
+            value: "kobocat"
+          - name: postgresql.kpiDatabase
+            value: "koboform"
           - name: postgresql.auth.postgresPassword
-            value: "postgres-admin-123"
+            value: "postgres-admin-secure-2024"
+          - name: postgresql.auth.username
+            value: "postgres"
           - name: postgresql.auth.password
-            value: "kobo-user-123"
-          # MongoDB settings
+            value: "kobo-user-secure-2024"
+
+          # MongoDB configuration (actual chart structure)
+          - name: mongodb.enabled
+            value: "true"
           - name: mongodb.auth.rootPassword
-            value: "mongo-admin-123"
+            value: "mongo-root-secure-2024"
+          - name: mongodb.auth.username
+            value: "kobo"
           - name: mongodb.auth.password
-            value: "mongo-user-123"
+            value: "mongo-user-secure-2024"
+          - name: mongodb.auth.database
+            value: "formhub"
+
+          # Application image tags (use chart defaults or override)
+          - name: kpi.image.tag
+            value: "2.022.24d"
+          - name: kobocat.image.tag
+            value: "2.022.24a"
+          - name: enketo.image.tag
+            value: "3.0.4"
+          - name: nginx.image.tag
+            value: "1.21"
+
+          # Enketo configuration (actual chart structure)
+          - name: enketo.replicas
+            value: "1"
+          - name: enketo.subdomain
+            value: "ee"
+
+          # KPI subdomain
+          - name: kpi.subdomain
+            value: "kobo"
+
+          # KoboCAT subdomain
+          - name: kobocat.subdomain
+            value: "kc"
+
+          # Ingress (disabled)
+          - name: ingress.enabled
+            value: "false"
+
+          # Monitoring (disabled for now)
+          - name: uwsgiExporter.enabled
+            value: "false"
+          - name: flower.enabled
+            value: "false"
+
+          # Probes (enabled)
+          - name: probes.enabled
+            value: "true"
+
+          # Priority class
+          - name: priorityClass
+            value: ""
+
+          # SMTP (disabled for development)
+          - name: smtp.host
+            value: ""
+          - name: smtp.user
+            value: ""
+          - name: smtp.password
+            value: ""
+          - name: smtp.from
+            value: ""
+
+          # External services (disabled)
+          - name: external.google.apiKey
+            value: ""
+          - name: external.google.analyticsToken
+            value: ""
+          - name: external.ravenDSN.kobocat
+            value: ""
+          - name: external.ravenDSN.kpi
+            value: ""
+          - name: external.ravenDSN.kpiJs
+            value: ""
 
         valueFiles:
           - $values/values/kobotoolbox-values.yaml
@@ -55,13 +180,18 @@ spec:
     server: https://kubernetes.default.svc
     namespace: kobotoolbox
   syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
     syncOptions:
       - CreateNamespace=true
       - PrunePropagationPolicy=foreground
+      - Replace=true
     retry:
       limit: 5
       backoff:
-        duration: 5s
+        duration: 10s
         factor: 2
-        maxDuration: 10m
+        maxDuration: 15m
   revisionHistoryLimit: 3

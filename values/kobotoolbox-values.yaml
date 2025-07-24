@@ -1,70 +1,30 @@
-# values/kobotoolbox-values.yaml - MINIMAL WORKING VERSION
-# KoboToolbox Configuration - All critical settings handled by Helm parameters
+# values/kobotoolbox-values.yaml - MINIMAL OVERRIDE VERSION
+# Only override what's absolutely necessary since parameters handle most config
 
-# Basic resource configuration
-general:
-  # Most settings overridden by Helm parameters
-  replicas: 1
-  debug: false
-  serviceType: ClusterIP
+# Shared configuration for init containers and sidecars
+shared:
+  # Empty or minimal init containers to avoid the dockerize issue
+  initContainers: []
+  sidecarContainers: []
+  extraEnv:
+    BACKUPS_DIR: /srv/backups
+  extraSecretEnv: {}
 
-# Application images - use stable versions
+# KPI specific environment variables (if needed beyond defaults)
 kpi:
-  image:
-    name: kobotoolbox/kpi
-    tag: "2.022.24d"  # From official values
+  extraEnv:
+    # Use chart defaults mostly, add only if needed
+    KOBO_SUPPORT_URL: "http://support.kobotoolbox.org/"
+    EMAIL_FILE_PATH: "./emails"
 
+# KoboCAT specific environment variables (if needed beyond defaults)
 kobocat:
-  image:
-    name: kobotoolbox/kobocat
-    tag: "2.022.24a"  # From official values
+  extraEnv:
+    # Use chart defaults mostly, add only if needed
+    ENKETO_OFFLINE_SURVEYS: "True"
 
+# Enketo specific configuration (use chart defaults)
 enketo:
-  image:
-    name: enketo/enketo-express
-    tag: "3.0.4"  # From official values
-  replicas: 1
-
-nginx:
-  image:
-    name: nginx
-    tag: "1.21"  # From official values
-
-# Service configuration
-ingress:
-  enabled: false
-
-# Monitoring (disable for development)
-uwsgiExporter:
-  enabled: false
-
-flower:
-  enabled: false
-
-probes:
-  enabled: true
-
-# Priority class (optional, can remove if not needed)
-priorityClass: ""
-
-# SMTP (disabled for development)
-smtp:
-  host: ""
-  user: ""
-  password: ""
-  from: ""
-
-# External services (disabled for development)
-external:
-  google:
-    apiKey: ""
-    analyticsToken: ""
-  ravenDSN:
-    kobocat: ""
-    kpi: ""
-    kpiJs: ""
-
-# Sentry configuration
-general:
-  sentry:
-    environment: development
+  # Use chart default API keys for development
+  # Production should use secure random keys
+  logoSource: ""
