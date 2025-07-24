@@ -11,9 +11,9 @@ metadata:
 spec:
   project: default
   sources:
-    - repoURL: https://one-acre-fund.github.io/oaf-public-charts
-      targetRevision: "0.7.4"
-      chart: kobotoolbox
+    - repoURL: https://github.com/AzizBenDhiab/oaf-public-charts.git
+      targetRevision: main
+      chart: charts/kobotoolbox
       helm:
         # USING ACTUAL CHART PARAMETER NAMES
         parameters:
