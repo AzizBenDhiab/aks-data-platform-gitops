@@ -1,0 +1,80 @@
+# argocd/nifi-test-app.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nifi-test
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://cetic.github.io/helm-charts
+    targetRevision: "1.2.1"
+    chart: nifi
+    helm:
+      values: |
+        # Basic configuration for testing
+        replicaCount: 1
+
+        image:
+          repository: apache/nifi
+          tag: "1.23.2"
+          pullPolicy: IfNotPresent
+
+        # Storage - use our proven storage class
+        persistence:
+          enabled: true
+          storageClass: "managed-csi"
+          accessMode: ReadWriteOnce
+          size: 10Gi
+
+        # Service configuration
+        service:
+          type: ClusterIP
+          httpPort: 8080
+          httpsPort: 8443
+
+        # Resource limits
+        resources:
+          limits:
+            memory: 2Gi
+            cpu: 1000m
+          requests:
+            memory: 1Gi
+            cpu: 500m
+
+        # Start with simple configuration
+        zookeeper:
+          enabled: false  # Single node for now
+
+        # Security - basic setup
+        auth:
+          enabled: true
+          admin: admin
+          password: admin123
+
+        # Ingress disabled for testing
+        ingress:
+          enabled: false
+          
+        # Node selection
+        nodeSelector: {}
+        tolerations: []
+        affinity: {}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: nifi-test
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 3
