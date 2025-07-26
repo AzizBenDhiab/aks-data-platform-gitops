@@ -10,10 +10,10 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  sources:
+  source:
     - repoURL: https://github.com/AzizBenDhiab/oaf-public-charts.git
       targetRevision: main
-      chart: charts/kobotoolbox
+      path: charts/kobotoolbox
       helm:
         # USING ACTUAL CHART PARAMETER NAMES
         parameters:
