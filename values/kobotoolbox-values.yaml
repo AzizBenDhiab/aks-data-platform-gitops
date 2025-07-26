@@ -1,4 +1,4 @@
-# values/kobotoolbox-values.yaml - MINIMAL OVERRIDE VERSION
+# values/kobotoolbox-values.yaml - MINIMAL OVERRIDE VERSION WITH POSTGIS FIX
 # Only override what's absolutely necessary since parameters handle most config
 
 # Shared configuration for init containers and sidecars
@@ -10,29 +10,26 @@ shared:
     BACKUPS_DIR: /srv/backups
   extraSecretEnv: {}
 
-kobo:
-  initContainers:
-    wait-db:
-      command:
-        - dockerize
-        - -timeout=120s
-        - -wait
-        - tcp://${KOBO_MONGO_HOST}:${KOBO_MONGO_PORT}
-        - -wait
-        - tcp://${POSTGRES_HOST}:${POSTGRES_PORT}
-
 # KPI specific environment variables (if needed beyond defaults)
 kpi:
   extraEnv:
     # Use chart defaults mostly, add only if needed
     KOBO_SUPPORT_URL: "http://support.kobotoolbox.org/"
     EMAIL_FILE_PATH: "./emails"
+    # CRITICAL: Configure Django to use PostGIS backend
+    DATABASE_ENGINE: "django.contrib.gis.db.backends.postgis"
+    DATABASES_DEFAULT_ENGINE: "django.contrib.gis.db.backends.postgis"
+    POSTGIS_VERSION: "3.1"
 
 # KoboCAT specific environment variables (if needed beyond defaults)
 kobocat:
   extraEnv:
     # Use chart defaults mostly, add only if needed
     ENKETO_OFFLINE_SURVEYS: "True"
+    # CRITICAL: Configure Django to use PostGIS backend
+    DATABASE_ENGINE: "django.contrib.gis.db.backends.postgis"
+    DATABASES_DEFAULT_ENGINE: "django.contrib.gis.db.backends.postgis"
+    POSTGIS_VERSION: "3.1"
 
 # Enketo specific configuration (use chart defaults)
 enketo:
