@@ -180,10 +180,10 @@ spec:
     server: https://kubernetes.default.svc
     namespace: kobotoolbox
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-      allowEmpty: false
+    # automated:
+    #   prune: true
+    #   selfHeal: true
+    #   allowEmpty: false
     syncOptions:
       - CreateNamespace=true
       - PrunePropagationPolicy=foreground
