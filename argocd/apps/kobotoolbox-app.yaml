@@ -1,4 +1,4 @@
-# argocd/kobotoolbox-app.yaml - CORRECTED WITH REAL CHART STRUCTURE
+# argocd/kobotoolbox-app.yaml - FIXED DATABASE PROTOCOL VERSION
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -20,6 +20,12 @@ spec:
           # CRITICAL: Override the hardcoded global.storageClass
           - name: global.storageClass
             value: "managed-csi"
+
+          # CRITICAL: Force postgres:// protocol instead of postgis://
+          - name: global.databaseUrl.protocol
+            value: "postgres"
+          - name: postgresql.databaseUrl.protocol
+            value: "postgres"
 
           # Redis configuration (actual chart structure)
           - name: global.redis.password
@@ -93,7 +99,13 @@ spec:
           - name: postgresql.auth.username
             value: "postgres"
           - name: postgresql.auth.password
-            value: "kobo-user-secure-2024"
+            value: "postgres-admin-secure-2024"
+
+          # CRITICAL: Override database URL templates to use postgres://
+          - name: kobocat.database.url
+            value: "postgres://postgres:postgres-admin-secure-2024@kobotoolbox-postgresql:5432/kobocat"
+          - name: kpi.database.url
+            value: "postgres://postgres:postgres-admin-secure-2024@kobotoolbox-postgresql:5432/koboform"
 
           # MongoDB configuration (actual chart structure)
           - name: mongodb.enabled
