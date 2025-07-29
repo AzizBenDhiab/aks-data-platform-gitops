@@ -91,7 +91,7 @@ spec:
           readOnlyRootFilesystem: false
         volumeMounts:
         - name: joget-data
-          mountPath: /opt/joget/wflow
+          mountPath: /home/tomcat/wflow
         ports:
         - containerPort: 8080
           name: http
@@ -128,6 +128,9 @@ spec:
         # Disable Tomcat clustering to reduce 403 errors
         - name: CATALINA_OPTS
           value: "-Dtomcat.clustering.enabled=false"
+        # Set the correct wflow directory for community image
+        - name: WFLOW_HOME
+          value: "/home/tomcat/wflow"
         volumeMounts:
         - name: joget-data
           mountPath: /opt/joget/wflow
