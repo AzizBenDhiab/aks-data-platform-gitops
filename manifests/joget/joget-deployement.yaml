@@ -51,8 +51,6 @@ kind: ServiceAccount
 metadata:
   name: joget
   namespace: joget
----
-# Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -126,6 +124,8 @@ spec:
                 configMapKeyRef:
                   name: joget-config
                   key: JAVA_OPTS
+            - name: KUBERNETES_NAMESPACE
+              value: "joget" # Explicitly set the namespace
           volumeMounts:
             - name: joget-data
               mountPath: /opt/joget/wflow
@@ -216,3 +216,30 @@ spec:
 #   # - hosts:
 #   #   - joget.your-domain.com
 #   #   secretName: joget-tls
+
+---
+# Role for Joget Service Account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: joget-pod-reader
+  namespace: joget
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+# RoleBinding to bind the Role to the Service Account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: joget-pod-reader-binding
+  namespace: joget
+subjects:
+  - kind: ServiceAccount
+    name: joget
+    namespace: joget
+roleRef:
+  kind: Role
+  name: joget-pod-reader
+  apiGroup: rbac.authorization.k8s.io
