@@ -150,7 +150,7 @@ spec:
           value: "/home/tomcat/wflow"
         volumeMounts:
         - name: joget-data
-          mountPath: /opt/joget/wflow
+          mountPath: /home/tomcat/wflow
         resources:
           limits:
             cpu: 2000m
