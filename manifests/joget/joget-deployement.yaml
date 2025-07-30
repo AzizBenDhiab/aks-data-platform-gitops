@@ -85,8 +85,9 @@ spec:
         command: ['sh', '-c']
         args:
         - |
-          echo "Setting up Joget configuration files directly in /opt/joget/wflow..."
-          # Create the wflow directory if it doesn't exist
+          echo "Setting up Joget configuration with symbolic link approach..."
+          
+          # Create the persistent directory where files will actually be stored
           mkdir -p /opt/joget/wflow
           
           # Create app_datasource.properties - points to postgresql profile
@@ -102,12 +103,23 @@ spec:
           workflowUrl=jdbc\:postgresql\://postgresql:5432/joget
           EOF
           
+          # Create the parent directory for the symbolic link
+          mkdir -p /home/tomcat
+          
+          # Remove any existing /home/tomcat/wflow directory/link
+          rm -rf /home/tomcat/wflow
+          
+          # Create symbolic link from where Joget expects files to where they actually are
+          ln -sf /opt/joget/wflow /home/tomcat/wflow
+          
           # Set correct ownership and permissions
           chown -R 1000:1000 /opt/joget/wflow
           chmod -R 755 /opt/joget/wflow
           
-          echo "Configuration files created:"
+          echo "Configuration files created in persistent location:"
           ls -la /opt/joget/wflow/
+          echo "Symbolic link created:"
+          ls -la /home/tomcat/wflow
           echo "Content of app_datasource.properties:"
           cat /opt/joget/wflow/app_datasource.properties
           echo "Content of app_datasource-postgresql.properties:"
@@ -118,7 +130,7 @@ spec:
           runAsGroup: 1000
         volumeMounts:
         - name: joget-data
-          mountPath: /home/tomcat/wflow
+          mountPath: /opt/joget/wflow
       containers:
       - name: joget
         image: jogetworkflow/joget-community:latest
@@ -144,7 +156,7 @@ spec:
           value: "-Dtomcat.clustering.enabled=false"
         # Set the correct wflow directory for community image
         - name: WFLOW_HOME
-          value: "/opt/joget/wflow"
+          value: "/home/tomcat/wflow"
         volumeMounts:
         - name: joget-data
           mountPath: /opt/joget/wflow
@@ -155,31 +167,31 @@ spec:
           requests:
             cpu: 500m
             memory: 1Gi
-        # Temporarily comment out health checks for debugging
-        # livenessProbe:
-        #   httpGet:
-        #     path: /jw
-        #     port: 8080
-        #   initialDelaySeconds: 120
-        #   periodSeconds: 30
-        #   timeoutSeconds: 10
-        #   failureThreshold: 3
-        # readinessProbe:
-        #   httpGet:
-        #     path: /jw
-        #     port: 8080
-        #   initialDelaySeconds: 60
-        #   periodSeconds: 10
-        #   timeoutSeconds: 5
-        #   failureThreshold: 3
-        # startupProbe:
-        #   httpGet:
-        #     path: /jw
-        #     port: 8080
-        #   initialDelaySeconds: 30
-        #   periodSeconds: 10
-        #   timeoutSeconds: 5
-        #   failureThreshold: 30
+        # Re-enable health checks for production
+        livenessProbe:
+          httpGet:
+            path: /jw
+            port: 8080
+          initialDelaySeconds: 180
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /jw
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 10
+        startupProbe:
+          httpGet:
+            path: /jw
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 20
       volumes:
       - name: joget-data
         persistentVolumeClaim:
