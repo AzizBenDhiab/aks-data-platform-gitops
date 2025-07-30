@@ -79,7 +79,7 @@ spec:
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
-       initContainers:
+      initContainers:
       # Wait for PostgreSQL to be ready
       - name: wait-for-postgresql
         image: postgres:13-alpine
