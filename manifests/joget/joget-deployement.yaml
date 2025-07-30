@@ -52,7 +52,6 @@ metadata:
   name: joget
   namespace: joget
 ---
-# Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -98,102 +97,121 @@ spec:
         securityContext:
           runAsUser: 1000
           runAsGroup: 1000
-      # NEW INIT CONTAINER: Initialize Joget Database Schema
+
+      # NEW INIT CONTAINER (for DB Schema Initialization)
       - name: init-joget-db
-        image: jogetworkflow/joget-community:latest # Use the same Joget image
+        image: jogetworkflow/joget-community:latest # Use the same Joget image for its setup tools
         command: ["/bin/sh", "-c"]
         args:
         - |
           echo "Initializing Joget database schema..."
-          # The 'setup' Ant target in Joget images typically initializes the DB
-          # Ensure WFLOW_HOME points to a writeable location where it can create config files temporarily
+          # Set WFLOW_HOME temporarily for the setup command within this container
           export WFLOW_HOME=/tmp/joget-init-wflow
           mkdir -p $WFLOW_HOME
-          # Write the datasource properties directly into WFLOW_HOME for setup command
+          # Write the datasource properties into WFLOW_HOME for the setup command
           cat > $WFLOW_HOME/app_datasource.properties << EOF
           currentProfile=postgresql
           EOF
           cat > $WFLOW_HOME/app_datasource-postgresql.properties << EOF
           workflowUser=joget_user
-          workflowPassword=$(echo "joget_password" | base64 -d) # Decode from base64 if needed, or use plain if not sourced from secret
+          workflowPassword=$(echo "am9nZXRfcGFzc3dvcmQ=" | base64 -d) # Decoding your base64 password
           workflowDriver=org.postgresql.Driver
           workflowUrl=jdbc\:postgresql\://postgresql:5432/joget
           EOF
-          # Run the Ant setup command. The 'setup' target usually handles schema creation.
+          # Run the Ant setup command to initialize the database schema
           /opt/joget/apache-tomcat/bin/startup.sh setup
           echo "Joget database schema initialization attempted."
         env:
-        - name: DATASOURCE_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: joget-secrets
-              key: DATASOURCE_PASSWORD
-        - name: DATASOURCE_USERNAME
-          valueFrom:
-            configMapKeyRef:
-              name: joget-config
-              key: DATASOURCE_USERNAME
-        - name: DATASOURCE_URL
-          valueFrom:
-            configMapKeyRef:
-              name: joget-config
-              key: DATASOURCE_URL
-        - name: DATASOURCE_DRIVER
-          valueFrom:
-            configMapKeyRef:
-              name: joget-config
-              key: DATASOURCE_DRIVER
+          # It's good practice to pass these via env, even if hardcoded above for startup.sh
+          # If your secret/configmap has the plain text, use that directly.
+          - name: DATASOURCE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: joget-secrets
+                key: DATASOURCE_PASSWORD
+          - name: DATASOURCE_USERNAME
+            valueFrom:
+              configMapKeyRef:
+                name: joget-config
+                key: DATASOURCE_USERNAME
+          - name: DATASOURCE_URL
+            valueFrom:
+              configMapKeyRef:
+                name: joget-config
+                key: DATASOURCE_URL
+          - name: DATASOURCE_DRIVER
+            valueFrom:
+              configMapKeyRef:
+                name: joget-config
+                key: DATASOURCE_DRIVER
         securityContext:
-          runAsUser: 0 # The setup script might require root temporarily, or ensure the image's setup script can run as non-root
+          runAsUser: 0 # Often needed for setup scripts within official images
           runAsGroup: 0
         volumeMounts:
         # Mount an emptyDir for temporary setup files, as the setup command might write there
         - name: joget-init-tmp
           mountPath: /tmp/joget-init-wflow
-      # Existing setup-joget-config init container (slightly modified to use correct paths)
+
+      # ORIGINAL CONFIGURATION: Setup Joget configuration
       - name: setup-joget-config
         image: busybox:1.36
         command: ['sh', '-c']
         args:
         - |
-          echo "Setting up Joget configuration with corrected directory structure..."
-          # No need to create /opt/joget/wflow directly in this container if it's a mounted PVC.
-          # The main joget container expects /home/tomcat/wflow based on WFLOW_HOME env var.
-          # The PVC for joget-data should be mounted at /home/tomcat/wflow for persistent data.
-          # The shared-home emptyDir can be mounted at /home/tomcat for general Joget application files.
+          echo "Setting up Joget configuration with original directory structure..."
 
-          # Ensure the persistent directory exists and is writable by the expected user
-          mkdir -p /home/tomcat/wflow
-          # Copy files to shared location where both containers can access (main Joget container expects this)
-          cat > /home/tomcat/wflow/app_datasource.properties << 'EOF'
+          # Create the persistent directory where files will actually be stored (PVC mounted here)
+          mkdir -p /opt/joget/wflow
+
+          # Create app_datasource.properties - points to postgresql profile
+          cat > /opt/joget/wflow/app_datasource.properties << 'EOF'
           currentProfile=postgresql
           EOF
-          cat > /home/tomcat/wflow/app_datasource-postgresql.properties << 'EOF'
+
+          # Create app_datasource-postgresql.properties - PostgreSQL connection details
+          cat > /opt/joget/wflow/app_datasource-postgresql.properties << 'EOF'
           workflowUser=joget_user
           workflowPassword=joget_password
           workflowDriver=org.postgresql.Driver
           workflowUrl=jdbc\:postgresql\://postgresql:5432/joget
           EOF
-          cat > /home/tomcat/wflow/app_datasource-default.properties << 'EOF'
+
+          # Create app_datasource-default.properties - Required by Joget startup script
+          cat > /opt/joget/wflow/app_datasource-default.properties << 'EOF'
           workflowDriver=org.hsqldb.jdbcDriver
           workflowUrl=jdbc\:hsqldb\:file\:${wflow.home}/db/jwdb;shutdown\=true;hsqldb.write_delay\=false;hsqldb.log_data\=false
           workflowUser=sa
           workflowPassword=
           profileName=
           EOF
-          # Set permissions (should work due to fsGroup: 1000)
-          chmod -R 755 /home/tomcat/wflow/
 
-          echo "Configuration files created successfully in /home/tomcat/wflow"
-          ls -la /home/tomcat/wflow/
+          # Create directory structure in shared volume
+          mkdir -p /shared-home/wflow
+
+          # Copy files from PVC location to shared location where main container will access them
+          cp /opt/joget/wflow/app_datasource.properties /shared-home/wflow/
+          cp /opt/joget/wflow/app_datasource-postgresql.properties /shared-home/wflow/
+          cp /opt/joget/wflow/app_datasource-default.properties /shared-home/wflow/
+
+          # Set permissions (should work due to fsGroup: 1000)
+          chmod -R 755 /shared-home/wflow/
+
+          echo "Configuration files created successfully:"
+          echo "=== Persistent location (/opt/joget/wflow) ==="
+          ls -la /opt/joget/wflow/
+          echo "=== Shared location (/shared-home/wflow) ==="
+          ls -la /shared-home/wflow/
           echo "Setup complete!"
         securityContext:
           runAsUser: 1000
           runAsGroup: 1000
         volumeMounts:
-        # The main Joget container's WFLOW_HOME is /home/tomcat/wflow, so mount PVC there directly
         - name: joget-data
-          mountPath: /home/tomcat/wflow # Mount PVC here directly for WFLOW_HOME
+          mountPath: /opt/joget/wflow # Your original PVC mount
+        - name: shared-home
+          mountPath: /shared-home     # Your original emptyDir mount
+
+      # ORIGINAL CONFIGURATION: Main Joget container
       containers:
       - name: joget
         image: jogetworkflow/joget-community:latest
@@ -217,12 +235,14 @@ spec:
           value: "-Xmx2048m -Xms512m -XX:MaxMetaspaceSize=512m"
         - name: CATALINA_OPTS
           value: "-Dtomcat.clustering.enabled=false"
-        # Point to shared location where config files and persistent data are
+        # Point to shared location where config files are (your original WFLOW_HOME)
         - name: WFLOW_HOME
-          value: "/home/tomcat/wflow" # This is where Joget expects its data and config
+          value: "/home/tomcat" # Your original WFLOW_HOME, expects wflow sub-directory
         volumeMounts:
         - name: joget-data
-          mountPath: /home/tomcat/wflow # Main container also uses this path for data and config
+          mountPath: /opt/joget/wflow # Your original PVC mount
+        - name: shared-home
+          mountPath: /home/tomcat     # Your original emptyDir mount for WFLOW_HOME
         resources:
           limits:
             cpu: 2000m
@@ -259,10 +279,11 @@ spec:
       - name: joget-data
         persistentVolumeClaim:
           claimName: joget-data-pvc
+      - name: shared-home
+        emptyDir: {}  # Shared volume between initContainer and main container
       - name: joget-init-tmp # New temporary volume for init-joget-db
         emptyDir: {}
       restartPolicy: Always
----
 # Service
 apiVersion: v1
 kind: Service
