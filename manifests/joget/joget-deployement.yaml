@@ -105,7 +105,7 @@ spec:
         command: ['sh', '-c']
         args:
         - |
-          echo "Setting up Joget configuration with non-root permissions..."
+          echo "Setting up Joget configuration with corrected directory structure..."
           
           # Create the persistent directory where files will actually be stored
           mkdir -p /opt/joget/wflow
@@ -132,22 +132,22 @@ spec:
           profileName=
           EOF
           
-          # Create directory structure in shared volume (should work with fsGroup)
-          mkdir -p /shared-home/tomcat/wflow
+          # Create directory structure in shared volume - CORRECTED PATH
+          mkdir -p /shared-home/wflow
           
           # Copy files to shared location where both containers can access
-          cp /opt/joget/wflow/app_datasource.properties /shared-home/tomcat/wflow/
-          cp /opt/joget/wflow/app_datasource-postgresql.properties /shared-home/tomcat/wflow/
-          cp /opt/joget/wflow/app_datasource-default.properties /shared-home/tomcat/wflow/
+          cp /opt/joget/wflow/app_datasource.properties /shared-home/wflow/
+          cp /opt/joget/wflow/app_datasource-postgresql.properties /shared-home/wflow/
+          cp /opt/joget/wflow/app_datasource-default.properties /shared-home/wflow/
           
           # Set permissions (should work due to fsGroup: 1000)
-          chmod -R 755 /shared-home/tomcat/
+          chmod -R 755 /shared-home/wflow/
           
           echo "Configuration files created successfully:"
           echo "=== Persistent location (/opt/joget/wflow) ==="
           ls -la /opt/joget/wflow/
-          echo "=== Shared location (/shared-home/tomcat/wflow) ==="
-          ls -la /shared-home/tomcat/wflow/
+          echo "=== Shared location (/shared-home/wflow) ==="
+          ls -la /shared-home/wflow/
           echo "Setup complete!"
         securityContext:
           runAsUser: 1000
@@ -250,44 +250,44 @@ spec:
   selector:
     app: joget
 ---
-# Production-ready Ingress configuration
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: joget-ingress
-  namespace: joget
-  annotations:
-    kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
-    # Session affinity for better user experience with Joget
-    nginx.ingress.kubernetes.io/affinity: "cookie"
-    nginx.ingress.kubernetes.io/session-cookie-name: "joget-server"
-    nginx.ingress.kubernetes.io/session-cookie-expires: "86400"
-    nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
-    # Security headers
-    nginx.ingress.kubernetes.io/server-snippet: |
-      add_header X-Frame-Options "SAMEORIGIN" always;
-      add_header X-Content-Type-Options "nosniff" always;
-      add_header X-XSS-Protection "1; mode=block" always;
-spec:
-  rules:
-  # Replace YOUR-EXTERNAL-IP with actual nginx ingress IP for nip.io testing
-  - host: joget.YOUR-EXTERNAL-IP.nip.io
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: joget-service
-            port:
-              number: 8080
-  # Uncomment when you have TLS certificate
-  # tls:
-  # - hosts:
-  #   - joget.your-domain.com
-  #   secretName: joget-tls
+# # Production-ready Ingress configuration
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: joget-ingress
+#   namespace: joget
+#   annotations:
+#     kubernetes.io/ingress.class: nginx
+#     nginx.ingress.kubernetes.io/rewrite-target: /
+#     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+#     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+#     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+#     nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+#     # Session affinity for better user experience with Joget
+#     nginx.ingress.kubernetes.io/affinity: "cookie"
+#     nginx.ingress.kubernetes.io/session-cookie-name: "joget-server"
+#     nginx.ingress.kubernetes.io/session-cookie-expires: "86400"
+#     nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
+#     # Security headers
+#     nginx.ingress.kubernetes.io/server-snippet: |
+#       add_header X-Frame-Options "SAMEORIGIN" always;
+#       add_header X-Content-Type-Options "nosniff" always;
+#       add_header X-XSS-Protection "1; mode=block" always;
+# spec:
+#   rules:
+#   # Replace YOUR-EXTERNAL-IP with actual nginx ingress IP for nip.io testing
+#   - host: joget.YOUR-EXTERNAL-IP.nip.io
+#     http:
+#       paths:
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: joget-service
+#             port:
+#               number: 8080
+#   # Uncomment when you have TLS certificate
+#   # tls:
+#   # - hosts:
+#   #   - joget.your-domain.com
+#   #   secretName: joget-tls
