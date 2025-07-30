@@ -102,17 +102,17 @@ spec:
         command: ['sh', '-c']
         args:
         - |
-          echo "Setting up Joget configuration with comprehensive fix..."
+          echo "Setting up Joget configuration with proper directory creation..."
           
           # Create the persistent directory where files will actually be stored
           mkdir -p /opt/joget/wflow
           
-          # SOLUTION 4: Create app_datasource.properties - points to postgresql profile
+          # Create app_datasource.properties - points to postgresql profile
           cat > /opt/joget/wflow/app_datasource.properties << 'EOF'
           currentProfile=postgresql
           EOF
           
-          # SOLUTION 5: Create app_datasource-postgresql.properties - PostgreSQL connection details
+          # Create app_datasource-postgresql.properties - PostgreSQL connection details
           cat > /opt/joget/wflow/app_datasource-postgresql.properties << 'EOF'
           workflowUser=joget_user
           workflowPassword=joget_password
@@ -120,7 +120,7 @@ spec:
           workflowUrl=jdbc\:postgresql\://postgresql:5432/joget
           EOF
           
-          # SOLUTION 6: Create app_datasource-default.properties - Required by Joget startup script
+          # Create app_datasource-default.properties - Required by Joget startup script
           cat > /opt/joget/wflow/app_datasource-default.properties << 'EOF'
           workflowDriver=org.hsqldb.jdbcDriver
           workflowUrl=jdbc\:hsqldb\:file\:${wflow.home}/db/jwdb;shutdown\=true;hsqldb.write_delay\=false;hsqldb.log_data\=false
@@ -129,28 +129,42 @@ spec:
           profileName=
           EOF
           
-          # Create the parent directory for the symbolic link
+          # Set correct ownership and permissions on persistent files
+          chown -R 1000:1000 /opt/joget/wflow
+          chmod -R 755 /opt/joget/wflow
+          
+          # Create the directory structure that Joget expects (this is shared between containers)
           mkdir -p /home/tomcat
           
           # Remove any existing /home/tomcat/wflow directory/link
           rm -rf /home/tomcat/wflow
           
-          # SOLUTION 7: Create symbolic link from where Joget expects files to where they actually are
-          # This solves the persistent storage issue across cluster restarts
-          ln -sf /opt/joget/wflow /home/tomcat/wflow
+          # Create symbolic link with verbose output
+          echo "Creating symbolic link from /home/tomcat/wflow to /opt/joget/wflow"
+          ln -sfv /opt/joget/wflow /home/tomcat/wflow
           
-          # Set correct ownership and permissions
-          chown -R 1000:1000 /opt/joget/wflow
-          chmod -R 755 /opt/joget/wflow
+          # Verify the symbolic link was created successfully with detailed checks
+          echo "Verifying symbolic link..."
+          if [ -L /home/tomcat/wflow ]; then
+            echo "✅ Symbolic link exists"
+            echo "Link target: $(readlink /home/tomcat/wflow)"
+            echo "Files accessible through link:"
+            ls -la /home/tomcat/wflow/ || echo "❌ Cannot list files through link"
+            echo "Testing file read through link:"
+            cat /home/tomcat/wflow/app_datasource.properties || echo "❌ Cannot read file through link"
+          else
+            echo "❌ Symbolic link creation failed - falling back to copying"
+            mkdir -p /home/tomcat/wflow
+            cp /opt/joget/wflow/* /home/tomcat/wflow/
+            chown -R 1000:1000 /home/tomcat/wflow
+            chmod -R 755 /home/tomcat/wflow
+          fi
           
-          echo "Configuration files created in persistent location:"
+          echo "Final verification:"
+          echo "=== Files in persistent location (/opt/joget/wflow) ==="
           ls -la /opt/joget/wflow/
-          echo "Symbolic link created:"
-          ls -la /home/tomcat/wflow
-          echo "Content of app_datasource.properties:"
-          cat /opt/joget/wflow/app_datasource.properties
-          echo "Content of app_datasource-postgresql.properties:"
-          cat /opt/joget/wflow/app_datasource-postgresql.properties
+          echo "=== Files where Joget expects them (/home/tomcat/wflow) ==="
+          ls -la /home/tomcat/wflow/
           echo "Setup complete!"
         securityContext:
           runAsUser: 1000
