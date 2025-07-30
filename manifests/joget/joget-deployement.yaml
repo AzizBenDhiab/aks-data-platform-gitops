@@ -85,17 +85,17 @@ spec:
         command: ['sh', '-c']
         args:
         - |
-          echo "Setting up Joget configuration files per official documentation..."
+          echo "Setting up Joget configuration files directly in /opt/joget/wflow..."
           # Create the wflow directory if it doesn't exist
-          mkdir -p /home/tomcat/wflow
+          mkdir -p /opt/joget/wflow
           
           # Create app_datasource.properties - points to postgresql profile
-          cat > /home/tomcat/wflow/app_datasource.properties << 'EOF'
+          cat > /opt/joget/wflow/app_datasource.properties << 'EOF'
           currentProfile=postgresql
           EOF
           
           # Create app_datasource-postgresql.properties - PostgreSQL connection details
-          cat > /home/tomcat/wflow/app_datasource-postgresql.properties << 'EOF'
+          cat > /opt/joget/wflow/app_datasource-postgresql.properties << 'EOF'
           workflowUser=joget_user
           workflowPassword=joget_password
           workflowDriver=org.postgresql.Driver
@@ -103,15 +103,15 @@ spec:
           EOF
           
           # Set correct ownership and permissions
-          chown -R 1000:1000 /home/tomcat/wflow
-          chmod -R 755 /home/tomcat/wflow
+          chown -R 1000:1000 /opt/joget/wflow
+          chmod -R 755 /opt/joget/wflow
           
           echo "Configuration files created:"
-          ls -la /home/tomcat/wflow/
+          ls -la /opt/joget/wflow/
           echo "Content of app_datasource.properties:"
-          cat /home/tomcat/wflow/app_datasource.properties
+          cat /opt/joget/wflow/app_datasource.properties
           echo "Content of app_datasource-postgresql.properties:"
-          cat /home/tomcat/wflow/app_datasource-postgresql.properties
+          cat /opt/joget/wflow/app_datasource-postgresql.properties
           echo "Setup complete!"
         securityContext:
           runAsUser: 1000
@@ -129,9 +129,6 @@ spec:
           runAsNonRoot: true
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: false
-        volumeMounts:
-        - name: joget-data
-          mountPath: /home/tomcat/wflow
         ports:
         - containerPort: 8080
           name: http
@@ -147,10 +144,10 @@ spec:
           value: "-Dtomcat.clustering.enabled=false"
         # Set the correct wflow directory for community image
         - name: WFLOW_HOME
-          value: "/home/tomcat/wflow"
+          value: "/opt/joget/wflow"
         volumeMounts:
         - name: joget-data
-          mountPath: /home/tomcat/wflow
+          mountPath: /opt/joget/wflow
         resources:
           limits:
             cpu: 2000m
