@@ -1,3 +1,28 @@
+# RBAC for clustering (if needed)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: joget
+  name: joget-cluster-role
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: joget-cluster-binding
+  namespace: joget
+subjects:
+- kind: ServiceAccount
+  name: joget
+  namespace: joget
+roleRef:
+  kind: Role
+  name: joget-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+---
 # Namespace
 apiVersion: v1
 kind: Namespace
@@ -103,17 +128,16 @@ spec:
         - |
           echo "Setting up Joget DX8 configuration..."
 
-          # Create the persistent directory structure
-          mkdir -p /opt/joget/wflow
-          mkdir -p /shared-home/wflow
+          # Create the directory structure for DX8
+          mkdir -p /data/wflow
 
           # Create app_datasource.properties - points to postgresql profile
-          cat > /opt/joget/wflow/app_datasource.properties << 'EOF'
+          cat > /data/wflow/app_datasource.properties << 'EOF'
           currentProfile=postgresql
           EOF
 
           # Create app_datasource-postgresql.properties - PostgreSQL connection details
-          cat > /opt/joget/wflow/app_datasource-postgresql.properties << 'EOF'
+          cat > /data/wflow/app_datasource-postgresql.properties << 'EOF'
           workflowUser=joget_user
           workflowPassword=joget_password
           workflowDriver=org.postgresql.Driver
@@ -122,7 +146,7 @@ spec:
           EOF
 
           # Create app_datasource-default.properties - Required by Joget
-          cat > /opt/joget/wflow/app_datasource-default.properties << 'EOF'
+          cat > /data/wflow/app_datasource-default.properties << 'EOF'
           workflowDriver=org.hsqldb.jdbcDriver
           workflowUrl=jdbc\:hsqldb\:file\:${wflow.home}/db/jwdb;shutdown\=true;hsqldb.write_delay\=false;hsqldb.log_data\=false
           workflowUser=sa
@@ -130,33 +154,22 @@ spec:
           profileName=
           EOF
 
-          # Copy files to shared location where Joget DX8 will find them
-          cp /opt/joget/wflow/app_datasource.properties /shared-home/wflow/
-          cp /opt/joget/wflow/app_datasource-postgresql.properties /shared-home/wflow/
-          cp /opt/joget/wflow/app_datasource-default.properties /shared-home/wflow/
-
           # Set proper permissions
-          chmod -R 755 /shared-home/wflow/
-          chmod -R 755 /opt/joget/wflow/
+          chmod -R 755 /data/wflow/
 
           echo "Configuration files created successfully:"
-          echo "=== Persistent location (/opt/joget/wflow) ==="
-          ls -la /opt/joget/wflow/
-          echo "=== Shared location (/shared-home/wflow) ==="
-          ls -la /shared-home/wflow/
+          ls -la /data/wflow/
           echo "Setup complete!"
         securityContext:
           runAsUser: 1000
           runAsGroup: 1000
         volumeMounts:
         - name: joget-data
-          mountPath: /opt/joget/wflow
-        - name: shared-home
-          mountPath: /shared-home
+          mountPath: /data
 
       containers:
       - name: joget
-        image: jogetworkflow/joget-dx8-tomcat9:latest  # Changed to DX8 image
+        image: jogetworkflow/joget-dx8-tomcat9:latest
         imagePullPolicy: IfNotPresent
         securityContext:
           runAsUser: 1000
@@ -174,16 +187,15 @@ spec:
         env:
         - name: JAVA_OPTS
           value: "-Xmx2048m -Xms512m -XX:MaxMetaspaceSize=512m"
+        # DISABLE CLUSTERING to avoid the Kubernetes API errors
         - name: CATALINA_OPTS
-          value: "-Dtomcat.clustering.enabled=false"
-        # FIXED: Correct WFLOW_HOME path
+          value: "-Dtomcat.clustering.enabled=false -Djoget.cluster.enabled=false"
+        # Set WFLOW_HOME to match the persistent volume
         - name: WFLOW_HOME
-          value: "/home/tomcat/wflow"
+          value: "/data/wflow"
         volumeMounts:
         - name: joget-data
-          mountPath: /opt/joget/wflow
-        - name: shared-home
-          mountPath: /home/tomcat
+          mountPath: /data
         resources:
           limits:
             cpu: 2000m
@@ -220,8 +232,6 @@ spec:
       - name: joget-data
         persistentVolumeClaim:
           claimName: joget-data-pvc
-      - name: shared-home
-        emptyDir: {}
       restartPolicy: Always
 ---
 # Service
