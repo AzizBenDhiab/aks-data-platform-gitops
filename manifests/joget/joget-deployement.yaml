@@ -95,13 +95,13 @@ spec:
           runAsUser: 1000
           runAsGroup: 1000
 
-      # Setup Joget configuration with proper database initialization
+      # Setup Joget configuration for DX8
       - name: setup-joget-config
         image: busybox:1.36
         command: ['sh', '-c']
         args:
         - |
-          echo "Setting up Joget configuration..."
+          echo "Setting up Joget DX8 configuration..."
 
           # Create the persistent directory structure
           mkdir -p /opt/joget/wflow
@@ -130,7 +130,7 @@ spec:
           profileName=
           EOF
 
-          # Copy files to shared location
+          # Copy files to shared location where Joget DX8 will find them
           cp /opt/joget/wflow/app_datasource.properties /shared-home/wflow/
           cp /opt/joget/wflow/app_datasource-postgresql.properties /shared-home/wflow/
           cp /opt/joget/wflow/app_datasource-default.properties /shared-home/wflow/
@@ -140,7 +140,9 @@ spec:
           chmod -R 755 /opt/joget/wflow/
 
           echo "Configuration files created successfully:"
+          echo "=== Persistent location (/opt/joget/wflow) ==="
           ls -la /opt/joget/wflow/
+          echo "=== Shared location (/shared-home/wflow) ==="
           ls -la /shared-home/wflow/
           echo "Setup complete!"
         securityContext:
@@ -154,7 +156,7 @@ spec:
 
       containers:
       - name: joget
-        image: jogetworkflow/joget-community:latest
+        image: jogetworkflow/joget-dx8-tomcat9:latest  # Changed to DX8 image
         imagePullPolicy: IfNotPresent
         securityContext:
           runAsUser: 1000
@@ -174,8 +176,9 @@ spec:
           value: "-Xmx2048m -Xms512m -XX:MaxMetaspaceSize=512m"
         - name: CATALINA_OPTS
           value: "-Dtomcat.clustering.enabled=false"
+        # FIXED: Correct WFLOW_HOME path
         - name: WFLOW_HOME
-          value: "/home/tomcat"
+          value: "/home/tomcat/wflow"
         volumeMounts:
         - name: joget-data
           mountPath: /opt/joget/wflow
