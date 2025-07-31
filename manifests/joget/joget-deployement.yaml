@@ -27,11 +27,9 @@ metadata:
   name: joget-config
   namespace: joget
 data:
-  # PostgreSQL database configuration - connects to existing Bitnami PostgreSQL
   DATASOURCE_DRIVER: "org.postgresql.Driver"
   DATASOURCE_URL: "jdbc:postgresql://postgresql:5432/joget?useUnicode=true&characterEncoding=UTF-8&useSSL=false"
   DATASOURCE_USERNAME: "joget_user"
-  # Add other environment variables as needed
   JAVA_OPTS: "-Xmx2048m -Xms512m -XX:MaxMetaspaceSize=512m"
 ---
 # Secret for database password
@@ -42,7 +40,6 @@ metadata:
   namespace: joget
 type: Opaque
 data:
-  # Base64 encoded password - matches your PostgreSQL values
   DATASOURCE_PASSWORD: am9nZXRfcGFzc3dvcmQ=  # 'joget_password' encoded
 ---
 # Service Account
@@ -93,75 +90,22 @@ spec:
           echo "PostgreSQL is ready!"
         env:
         - name: PGPASSWORD
-          value: "joget_password" # Ensure this matches your secret or use a secretKeyRef
+          value: "joget_password"
         securityContext:
           runAsUser: 1000
           runAsGroup: 1000
 
-      # NEW INIT CONTAINER (for DB Schema Initialization)
-      - name: init-joget-db
-        image: jogetworkflow/joget-community:latest # Use the same Joget image for its setup tools
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          echo "Initializing Joget database schema..."
-          # Set WFLOW_HOME temporarily for the setup command within this container
-          export WFLOW_HOME=/tmp/joget-init-wflow
-          mkdir -p $WFLOW_HOME
-          # Write the datasource properties into WFLOW_HOME for the setup command
-          cat > $WFLOW_HOME/app_datasource.properties << EOF
-          currentProfile=postgresql
-          EOF
-          cat > $WFLOW_HOME/app_datasource-postgresql.properties << EOF
-          workflowUser=joget_user
-          workflowPassword=$(echo "am9nZXRfcGFzc3dvcmQ=" | base64 -d) # Decoding your base64 password
-          workflowDriver=org.postgresql.Driver
-          workflowUrl=jdbc\:postgresql\://postgresql:5432/joget
-          EOF
-          # Run the Ant setup command to initialize the database schema
-          /opt/joget/apache-tomcat/bin/startup.sh setup
-          echo "Joget database schema initialization attempted."
-        env:
-          # It's good practice to pass these via env, even if hardcoded above for startup.sh
-          # If your secret/configmap has the plain text, use that directly.
-          - name: DATASOURCE_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: joget-secrets
-                key: DATASOURCE_PASSWORD
-          - name: DATASOURCE_USERNAME
-            valueFrom:
-              configMapKeyRef:
-                name: joget-config
-                key: DATASOURCE_USERNAME
-          - name: DATASOURCE_URL
-            valueFrom:
-              configMapKeyRef:
-                name: joget-config
-                key: DATASOURCE_URL
-          - name: DATASOURCE_DRIVER
-            valueFrom:
-              configMapKeyRef:
-                name: joget-config
-                key: DATASOURCE_DRIVER
-        securityContext:
-          runAsUser: 0 # Often needed for setup scripts within official images
-          runAsGroup: 0
-        volumeMounts:
-        # Mount an emptyDir for temporary setup files, as the setup command might write there
-        - name: joget-init-tmp
-          mountPath: /tmp/joget-init-wflow
-
-      # ORIGINAL CONFIGURATION: Setup Joget configuration
+      # Setup Joget configuration with proper database initialization
       - name: setup-joget-config
         image: busybox:1.36
         command: ['sh', '-c']
         args:
         - |
-          echo "Setting up Joget configuration with original directory structure..."
+          echo "Setting up Joget configuration..."
 
-          # Create the persistent directory where files will actually be stored (PVC mounted here)
+          # Create the persistent directory structure
           mkdir -p /opt/joget/wflow
+          mkdir -p /shared-home/wflow
 
           # Create app_datasource.properties - points to postgresql profile
           cat > /opt/joget/wflow/app_datasource.properties << 'EOF'
@@ -174,9 +118,10 @@ spec:
           workflowPassword=joget_password
           workflowDriver=org.postgresql.Driver
           workflowUrl=jdbc\:postgresql\://postgresql:5432/joget
+          profileName=postgresql
           EOF
 
-          # Create app_datasource-default.properties - Required by Joget startup script
+          # Create app_datasource-default.properties - Required by Joget
           cat > /opt/joget/wflow/app_datasource-default.properties << 'EOF'
           workflowDriver=org.hsqldb.jdbcDriver
           workflowUrl=jdbc\:hsqldb\:file\:${wflow.home}/db/jwdb;shutdown\=true;hsqldb.write_delay\=false;hsqldb.log_data\=false
@@ -185,21 +130,17 @@ spec:
           profileName=
           EOF
 
-          # Create directory structure in shared volume
-          mkdir -p /shared-home/wflow
-
-          # Copy files from PVC location to shared location where main container will access them
+          # Copy files to shared location
           cp /opt/joget/wflow/app_datasource.properties /shared-home/wflow/
           cp /opt/joget/wflow/app_datasource-postgresql.properties /shared-home/wflow/
           cp /opt/joget/wflow/app_datasource-default.properties /shared-home/wflow/
 
-          # Set permissions (should work due to fsGroup: 1000)
+          # Set proper permissions
           chmod -R 755 /shared-home/wflow/
+          chmod -R 755 /opt/joget/wflow/
 
           echo "Configuration files created successfully:"
-          echo "=== Persistent location (/opt/joget/wflow) ==="
           ls -la /opt/joget/wflow/
-          echo "=== Shared location (/shared-home/wflow) ==="
           ls -la /shared-home/wflow/
           echo "Setup complete!"
         securityContext:
@@ -207,11 +148,10 @@ spec:
           runAsGroup: 1000
         volumeMounts:
         - name: joget-data
-          mountPath: /opt/joget/wflow # Your original PVC mount
+          mountPath: /opt/joget/wflow
         - name: shared-home
-          mountPath: /shared-home     # Your original emptyDir mount
+          mountPath: /shared-home
 
-      # ORIGINAL CONFIGURATION: Main Joget container
       containers:
       - name: joget
         image: jogetworkflow/joget-community:latest
@@ -230,19 +170,17 @@ spec:
           name: https
           protocol: TCP
         env:
-        # Java options and disable clustering
         - name: JAVA_OPTS
           value: "-Xmx2048m -Xms512m -XX:MaxMetaspaceSize=512m"
         - name: CATALINA_OPTS
           value: "-Dtomcat.clustering.enabled=false"
-        # Point to shared location where config files are (your original WFLOW_HOME)
         - name: WFLOW_HOME
-          value: "/home/tomcat" # Your original WFLOW_HOME, expects wflow sub-directory
+          value: "/home/tomcat"
         volumeMounts:
         - name: joget-data
-          mountPath: /opt/joget/wflow # Your original PVC mount
+          mountPath: /opt/joget/wflow
         - name: shared-home
-          mountPath: /home/tomcat     # Your original emptyDir mount for WFLOW_HOME
+          mountPath: /home/tomcat
         resources:
           limits:
             cpu: 2000m
@@ -250,12 +188,12 @@ spec:
           requests:
             cpu: 500m
             memory: 1Gi
-        # Health checks with appropriate timing
+        # Adjusted health checks for better startup handling
         livenessProbe:
           httpGet:
             path: /jw
             port: 8080
-          initialDelaySeconds: 300
+          initialDelaySeconds: 600  # Increased for database setup
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 5
@@ -263,7 +201,7 @@ spec:
           httpGet:
             path: /jw
             port: 8080
-          initialDelaySeconds: 240
+          initialDelaySeconds: 480  # Increased for database setup
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 10
@@ -271,19 +209,18 @@ spec:
           httpGet:
             path: /jw
             port: 8080
-          initialDelaySeconds: 60
-          periodSeconds: 15
+          initialDelaySeconds: 120
+          periodSeconds: 30
           timeoutSeconds: 10
-          failureThreshold: 30
+          failureThreshold: 40  # Increased for longer startup time
       volumes:
       - name: joget-data
         persistentVolumeClaim:
           claimName: joget-data-pvc
       - name: shared-home
-        emptyDir: {}  # Shared volume between initContainer and main container
-      - name: joget-init-tmp # New temporary volume for init-joget-db
         emptyDir: {}
       restartPolicy: Always
+---
 # Service
 apiVersion: v1
 kind: Service
@@ -305,45 +242,3 @@ spec:
     name: https
   selector:
     app: joget
----
-# # Production-ready Ingress configuration
-# apiVersion: networking.k8s.io/v1
-# kind: Ingress
-# metadata:
-#   name: joget-ingress
-#   namespace: joget
-#   annotations:
-#     kubernetes.io/ingress.class: nginx
-#     nginx.ingress.kubernetes.io/rewrite-target: /
-#     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
-#     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-#     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-#     nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
-#     # Session affinity for better user experience with Joget
-#     nginx.ingress.kubernetes.io/affinity: "cookie"
-#     nginx.ingress.kubernetes.io/session-cookie-name: "joget-server"
-#     nginx.ingress.kubernetes.io/session-cookie-expires: "86400"
-#     nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
-#     # Security headers
-#     nginx.ingress.kubernetes.io/server-snippet: |
-#       add_header X-Frame-Options "SAMEORIGIN" always;
-#       add_header X-Content-Type-Options "nosniff" always;
-#       add_header X-XSS-Protection "1; mode=block" always;
-# spec:
-#   rules:
-#   # Replace YOUR-EXTERNAL-IP with actual nginx ingress IP for nip.io testing
-#   - host: joget.YOUR-EXTERNAL-IP.nip.io
-#     http:
-#       paths:
-#       - path: /
-#         pathType: Prefix
-#         backend:
-#           service:
-#             name: joget-service
-#             port:
-#               number: 8080
-#   # Uncomment when you have TLS certificate
-#   # tls:
-#   # - hosts:
-#   #   - joget.your-domain.com
-#   #   secretName: joget-tls
