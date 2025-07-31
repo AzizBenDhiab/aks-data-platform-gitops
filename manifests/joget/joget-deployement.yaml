@@ -1,4 +1,5 @@
-# RBAC for clustering (if needed)
+# Complete Joget DX8 Production Setup with Clustering
+# RBAC for Joget Clustering
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -6,7 +7,10 @@ metadata:
   name: joget-cluster-role
 rules:
 - apiGroups: [""]
-  resources: ["pods"]
+  resources: ["pods", "endpoints", "services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
   verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -22,14 +26,6 @@ roleRef:
   kind: Role
   name: joget-cluster-role
   apiGroup: rbac.authorization.k8s.io
----
-# Namespace
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: joget
-  labels:
-    name: joget
 ---
 # Persistent Volume Claim for Joget data
 apiVersion: v1
@@ -67,7 +63,7 @@ type: Opaque
 data:
   DATASOURCE_PASSWORD: am9nZXRfcGFzc3dvcmQ=  # 'joget_password' encoded
 ---
-# Service Account
+# Service Account for clustering
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -82,7 +78,7 @@ metadata:
   labels:
     app: joget
 spec:
-  replicas: 1
+  replicas: 1  # Start with 1, scale later
   selector:
     matchLabels:
       app: joget
@@ -184,13 +180,24 @@ spec:
         - containerPort: 9080
           name: https
           protocol: TCP
+        - containerPort: 4000
+          name: cluster
+          protocol: TCP
         env:
         - name: JAVA_OPTS
           value: "-Xmx2048m -Xms512m -XX:MaxMetaspaceSize=512m"
-        # DISABLE CLUSTERING to avoid the Kubernetes API errors
+        # ENABLE clustering but fix the namespace issue
         - name: CATALINA_OPTS
-          value: "-Dtomcat.clustering.enabled=false -Djoget.cluster.enabled=false"
-        # Set WFLOW_HOME to match the persistent volume
+          value: "-Djoget.cluster.enabled=true -Dtomcat.clustering.enabled=true -Djava.net.preferIPv4Stack=true"
+        # Override the wrong namespace from DX8 image
+        - name: KUBERNETES_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        # Set the correct label selector
+        - name: KUBERNETES_LABELS
+          value: "app=joget"
+        # Set WFLOW_HOME
         - name: WFLOW_HOME
           value: "/data/wflow"
         volumeMounts:
@@ -203,12 +210,12 @@ spec:
           requests:
             cpu: 500m
             memory: 1Gi
-        # Adjusted health checks for better startup handling
+        # Health checks
         livenessProbe:
           httpGet:
             path: /jw
             port: 8080
-          initialDelaySeconds: 600  # Increased for database setup
+          initialDelaySeconds: 600
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 5
@@ -216,7 +223,7 @@ spec:
           httpGet:
             path: /jw
             port: 8080
-          initialDelaySeconds: 480  # Increased for database setup
+          initialDelaySeconds: 480
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 10
@@ -227,14 +234,32 @@ spec:
           initialDelaySeconds: 120
           periodSeconds: 30
           timeoutSeconds: 10
-          failureThreshold: 40  # Increased for longer startup time
+          failureThreshold: 60
       volumes:
       - name: joget-data
         persistentVolumeClaim:
           claimName: joget-data-pvc
       restartPolicy: Always
 ---
-# Service
+# Headless Service for clustering (pod discovery)
+apiVersion: v1
+kind: Service
+metadata:
+  name: joget-cluster
+  namespace: joget
+  labels:
+    app: joget
+spec:
+  clusterIP: None  # Headless service for clustering
+  ports:
+  - port: 4000
+    targetPort: 4000
+    protocol: TCP
+    name: cluster
+  selector:
+    app: joget
+---
+# Regular Service for external access
 apiVersion: v1
 kind: Service
 metadata:
@@ -243,13 +268,13 @@ metadata:
   labels:
     app: joget
 spec:
-  type: ClusterIP
+  type: LoadBalancer  # For easy external access
   ports:
-  - port: 8080
+  - port: 80
     targetPort: 8080
     protocol: TCP
     name: http
-  - port: 9080
+  - port: 443
     targetPort: 9080
     protocol: TCP
     name: https
