@@ -213,28 +213,28 @@ spec:
         # Health checks
         livenessProbe:
           httpGet:
-            path: /jw
+            path: /
             port: 8080
-          initialDelaySeconds: 600
+          initialDelaySeconds: 900
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 5
         readinessProbe:
           httpGet:
-            path: /jw
+            path: /
             port: 8080
-          initialDelaySeconds: 480
+          initialDelaySeconds: 600
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 10
         startupProbe:
           httpGet:
-            path: /jw
+            path: /
             port: 8080
-          initialDelaySeconds: 120
+          initialDelaySeconds: 180
           periodSeconds: 30
           timeoutSeconds: 10
-          failureThreshold: 60
+          failureThreshold: 80  # Allow up to 40 minutes for startup
       volumes:
       - name: joget-data
         persistentVolumeClaim:
