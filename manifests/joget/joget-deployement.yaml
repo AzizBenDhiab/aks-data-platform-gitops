@@ -78,7 +78,7 @@ metadata:
   labels:
     app: joget
 spec:
-  replicas: 1  # Start with 1, scale later
+  replicas: 3  # Start with 1, scale later
   selector:
     matchLabels:
       app: joget
@@ -172,7 +172,7 @@ spec:
           mountPath: /data
         - name: tomcat-home
           mountPath: /home/tomcat
-          
+
       containers:
       - name: joget
         image: jogetworkflow/joget-dx8-tomcat9:latest
