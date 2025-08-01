@@ -73,7 +73,7 @@ spec:
       volumes:
         - name: joget-dx8-tomcat9-pv
           persistentVolumeClaim:
-            claimName: joget-dx8-tomcat9-pv
+            claimName: joget-dx8-tomcat9-pvc  # Fixed: matches PVC name
       securityContext:
         runAsUser: 1000
         fsGroup: 0  # Match official documentation
