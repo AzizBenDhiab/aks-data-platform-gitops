@@ -1,10 +1,33 @@
-# Namespace (ensure it exists)
+# Joget DX8 Configuration - Fixed with Official Paths + PostgreSQL
 apiVersion: v1
 kind: Namespace
 metadata:
   name: joget
+  labels:
+    name: joget
 ---
-# RBAC for Joget Clustering
+# Persistent Volume Claim (using Azure managed-csi like yours)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: joget-dx8-tomcat9-pvc
+  namespace: joget
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 10Gi
+---
+# Service Account for clustering
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: joget
+  namespace: joget
+---
+# RBAC for clustering
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -13,9 +36,6 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["pods", "endpoints", "services"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["apps"]
-  resources: ["deployments", "replicasets"]
   verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -32,77 +52,33 @@ roleRef:
   name: joget-cluster-role
   apiGroup: rbac.authorization.k8s.io
 ---
-# Persistent Volume Claim for Joget data
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: joget-data-pvc
-  namespace: joget
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: managed-csi
-  resources:
-    requests:
-      storage: 10Gi
----
-# ConfigMap for Joget configuration
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: joget-config
-  namespace: joget
-data:
-  DATASOURCE_DRIVER: "org.postgresql.Driver"
-  DATASOURCE_URL: "jdbc:postgresql://postgresql:5432/joget?useUnicode=true&characterEncoding=UTF-8&useSSL=false"
-  DATASOURCE_USERNAME: "joget_user"
-  JAVA_OPTS: "-Xmx2048m -Xms512m -XX:MaxMetaspaceSize=512m"
----
-# Secret for database password
-apiVersion: v1
-kind: Secret
-metadata:
-  name: joget-secrets
-  namespace: joget
-type: Opaque
-data:
-  DATASOURCE_PASSWORD: am9nZXRfcGFzc3dvcmQ=  # 'joget_password' encoded
----
-# Service Account for clustering
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: joget
-  namespace: joget
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: joget
+  name: joget-dx8-tomcat9
   namespace: joget
   labels:
-    app: joget
+    app: joget-dx8-tomcat9
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
-      app: joget
+      app: joget-dx8-tomcat9
   template:
     metadata:
       labels:
-        app: joget
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
-        prometheus.io/path: "/jw"
+        app: joget-dx8-tomcat9
     spec:
       serviceAccountName: joget
+      volumes:
+        - name: joget-dx8-tomcat9-pv
+          persistentVolumeClaim:
+            claimName: joget-dx8-tomcat9-pv
       securityContext:
         runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
+        fsGroup: 0  # Match official documentation
       initContainers:
-      # Wait for PostgreSQL to be ready
+      # Wait for PostgreSQL
       - name: wait-for-postgresql
         image: postgres:13-alpine
         command: ['sh', '-c']
@@ -116,146 +92,76 @@ spec:
           echo "PostgreSQL is ready!"
         env:
         - name: PGPASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: joget-secrets
-              key: DATASOURCE_PASSWORD
-        securityContext:
-          runAsUser: 1000
-          runAsGroup: 1000
-
-      # Setup Joget configuration for DX8
+          value: "joget_password"
+      
+      # Setup PostgreSQL configuration in the OFFICIAL path
       - name: setup-joget-config
         image: busybox:1.36
         command: ['sh', '-c']
         args:
         - |
-          echo "Setting up Joget DX8 configuration..."
-          mkdir -p /data/wflow
-          mkdir -p /home/tomcat/wflow
-
-          # Create app_datasource.properties
-          echo "currentProfile=postgresql" > /data/wflow/app_datasource.properties
-
-          # Create app_datasource-postgresql.properties
-          cat > /data/wflow/app_datasource-postgresql.properties << EOF
+          echo "Setting up Joget DX8 configuration in OFFICIAL path..."
+          
+          # Create directory at the OFFICIAL mount path
+          mkdir -p /opt/joget/wflow
+          
+          # Create PostgreSQL configuration
+          cat > /opt/joget/wflow/app_datasource.properties << 'EOF'
+          currentProfile=postgresql
+          EOF
+          
+          cat > /opt/joget/wflow/app_datasource-postgresql.properties << 'EOF'
           workflowUser=joget_user
-          workflowPassword=\$(cat /run/secrets/joget-secrets/DATASOURCE_PASSWORD)
+          workflowPassword=joget_password
           workflowDriver=org.postgresql.Driver
-          workflowUrl=jdbc:postgresql://postgresql:5432/joget?useUnicode=true&characterEncoding=UTF-8&useSSL=false
+          workflowUrl=jdbc\:postgresql\://postgresql:5432/joget
           profileName=postgresql
           EOF
-
-          # Create app_datasource-default.properties
-          cat > /data/wflow/app_datasource-default.properties << EOF
+          
+          cat > /opt/joget/wflow/app_datasource-default.properties << 'EOF'
           workflowDriver=org.hsqldb.jdbcDriver
-          workflowUrl=jdbc:hsqldb:file:/home/tomcat/wflow/db/jwdb;shutdown=true;hsqldb.write_delay=false;hsqldb.log_data=false
+          workflowUrl=jdbc\:hsqldb\:file\:${wflow.home}/db/jwdb;shutdown\=true;hsqldb.write_delay\=false;hsqldb.log_data\=false
           workflowUser=sa
           workflowPassword=
           profileName=
           EOF
-
-          # Copy config files to Joget default location
-          cp /data/wflow/*.properties /home/tomcat/wflow/
-          chmod -R 755 /data/wflow /home/tomcat/wflow
-
-          echo "Configuration files created successfully:"
-          ls -la /data/wflow/
-          ls -la /home/tomcat/wflow/
+          
+          chmod -R 755 /opt/joget/wflow/
+          
+          echo "Configuration files created at OFFICIAL path:"
+          ls -la /opt/joget/wflow/
           echo "Setup complete!"
-        securityContext:
-          runAsUser: 1000
-          runAsGroup: 1000
         volumeMounts:
-        - name: joget-data
-          mountPath: /data
-        - name: tomcat-home
-          mountPath: /home/tomcat
-        - name: joget-secrets
-          mountPath: /run/secrets/joget-secrets
-          readOnly: true
+        - name: joget-dx8-tomcat9-pv
+          mountPath: /opt/joget/wflow
+      
       containers:
-      - name: joget
-        image: jogetworkflow/joget-dx8-tomcat9:latest
-        imagePullPolicy: IfNotPresent
-        securityContext:
-          runAsUser: 1000
-          runAsGroup: 1000
-          runAsNonRoot: true
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: false
-        ports:
-        - containerPort: 8080
-          name: http
-          protocol: TCP
-        - containerPort: 9080
-          name: https
-          protocol: TCP
-        - containerPort: 4000
-          name: cluster
-          protocol: TCP
-        env:
-        - name: JAVA_OPTS
-          valueFrom:
-            configMapKeyRef:
-              name: joget-config
-              key: JAVA_OPTS
-        - name: CATALINA_OPTS
-          value: "-Djoget.cluster.enabled=true -Dtomcat.clustering.enabled=true -Djava.net.preferIPv4Stack=true"
-        - name: KUBERNETES_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: KUBERNETES_LABELS
-          value: "app=joget"
-        - name: WFLOW_HOME
-          value: "/home/tomcat/wflow"
-        volumeMounts:
-        - name: joget-data
-          mountPath: /data
-        - name: tomcat-home
-          mountPath: /home/tomcat
-        resources:
-          limits:
-            cpu: 2000m
-            memory: 4Gi
-          requests:
-            cpu: 500m
-            memory: 1Gi
-        livenessProbe:
-          httpGet:
-            path: /jw
-            port: 8080
-          initialDelaySeconds: 600
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 5
-        readinessProbe:
-          httpGet:
-            path: /jw
-            port: 8080
-          initialDelaySeconds: 480
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 10
-        startupProbe:
-          httpGet:
-            path: /jw
-            port: 8080
-          initialDelaySeconds: 120
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 60
-      volumes:
-      - name: joget-data
-        persistentVolumeClaim:
-          claimName: joget-data-pvc
-      - name: tomcat-home
-        emptyDir: {}
-      - name: joget-secrets
-        secret:
-          secretName: joget-secrets
-      restartPolicy: Always
+        - name: joget-dx8-tomcat9
+          image: jogetworkflow/joget-dx8-tomcat9:latest
+          ports:
+            - containerPort: 8080
+            - containerPort: 9080  
+            - containerPort: 4000  # Clustering port
+          volumeMounts:
+            - name: joget-dx8-tomcat9-pv
+              mountPath: /opt/joget/wflow  # OFFICIAL path from documentation
+          env:
+            - name: KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: KUBERNETES_LABELS
+              value: "app=joget-dx8-tomcat9"
+            # Enable clustering
+            - name: CATALINA_OPTS
+              value: "-Djoget.cluster.enabled=true -Dtomcat.clustering.enabled=true"
+          resources:
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+            requests:
+              cpu: 500m
+              memory: 1Gi
 ---
 # Headless Service for clustering
 apiVersion: v1
@@ -263,36 +169,30 @@ kind: Service
 metadata:
   name: joget-cluster
   namespace: joget
-  labels:
-    app: joget
 spec:
   clusterIP: None
   ports:
   - port: 4000
-    targetPort: 4000
-    protocol: TCP
     name: cluster
   selector:
-    app: joget
+    app: joget-dx8-tomcat9
 ---
-# Regular Service for external access
+# Main Service (LoadBalancer for external access)
 apiVersion: v1
 kind: Service
 metadata:
-  name: joget-service
+  name: joget-dx8-tomcat9
   namespace: joget
   labels:
-    app: joget
+    app: joget-dx8-tomcat9
 spec:
-  type: LoadBalancer
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080
-    protocol: TCP
-    name: http
-  - port: 443
+  - name: https
+    port: 443
     targetPort: 9080
-    protocol: TCP
-    name: https
   selector:
-    app: joget
+    app: joget-dx8-tomcat9
+  type: LoadBalancer
