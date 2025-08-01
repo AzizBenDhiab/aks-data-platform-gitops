@@ -116,7 +116,7 @@ spec:
           runAsUser: 1000
           runAsGroup: 1000
 
-      # Setup Joget configuration for DX8
+      # Setup Joget configuration for DX8 - Fixed path
       - name: setup-joget-config
         image: busybox:1.36
         command: ['sh', '-c']
@@ -124,8 +124,9 @@ spec:
         - |
           echo "Setting up Joget DX8 configuration..."
 
-          # Create the directory structure for DX8
+          # Create directories for both locations (persistent and default)
           mkdir -p /data/wflow
+          mkdir -p /home/tomcat/wflow
 
           # Create app_datasource.properties - points to postgresql profile
           cat > /data/wflow/app_datasource.properties << 'EOF'
@@ -150,11 +151,18 @@ spec:
           profileName=
           EOF
 
-          # Set proper permissions
+          # Copy config files to where Joget DX8 actually looks
+          cp /data/wflow/*.properties /home/tomcat/wflow/
+
+          # Set proper permissions for both locations
           chmod -R 755 /data/wflow/
+          chmod -R 755 /home/tomcat/wflow/
 
           echo "Configuration files created successfully:"
+          echo "=== Persistent storage (/data/wflow) ==="
           ls -la /data/wflow/
+          echo "=== Joget default location (/home/tomcat/wflow) ==="
+          ls -la /home/tomcat/wflow/
           echo "Setup complete!"
         securityContext:
           runAsUser: 1000
@@ -162,6 +170,10 @@ spec:
         volumeMounts:
         - name: joget-data
           mountPath: /data
+        - name: tomcat-home
+          mountPath: /home/tomcat
+        - name: tomcat-home
+          mountPath: /home/tomcat
 
       containers:
       - name: joget
@@ -197,9 +209,9 @@ spec:
         # Set the correct label selector
         - name: KUBERNETES_LABELS
           value: "app=joget"
-        # Set WFLOW_HOME
+        # Set WFLOW_HOME to the location where we actually put the config
         - name: WFLOW_HOME
-          value: "/data/wflow"
+          value: "/home/tomcat/wflow"
         volumeMounts:
         - name: joget-data
           mountPath: /data
@@ -219,6 +231,8 @@ spec:
       - name: joget-data
         persistentVolumeClaim:
           claimName: joget-data-pvc
+      - name: tomcat-home
+        emptyDir: {}  # Temporary volume for tomcat home directory
       restartPolicy: Always
 ---
 # Headless Service for clustering (pod discovery)
