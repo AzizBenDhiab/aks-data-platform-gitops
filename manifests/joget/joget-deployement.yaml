@@ -172,9 +172,7 @@ spec:
           mountPath: /data
         - name: tomcat-home
           mountPath: /home/tomcat
-        - name: tomcat-home
-          mountPath: /home/tomcat
-
+          
       containers:
       - name: joget
         image: jogetworkflow/joget-dx8-tomcat9:latest
