@@ -211,30 +211,10 @@ spec:
             cpu: 500m
             memory: 1Gi
         # Health checks
-        livenessProbe:
-          httpGet:
-            path: /
-            port: 8080
-          initialDelaySeconds: 900
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 5
-        readinessProbe:
-          httpGet:
-            path: /
-            port: 8080
-          initialDelaySeconds: 600
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 10
-        startupProbe:
-          httpGet:
-            path: /
-            port: 8080
-          initialDelaySeconds: 180
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 80  # Allow up to 40 minutes for startup
+        startupProbe: null
+        readinessProbe: null
+        livenessProbe: null
+
       volumes:
       - name: joget-data
         persistentVolumeClaim:
