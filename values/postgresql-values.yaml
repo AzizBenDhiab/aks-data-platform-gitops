@@ -1,14 +1,19 @@
-# values/postgresql-values.yaml - JOGET VERSION
-# PostgreSQL Authentication for Joget
+# Use existing secret created by SecretProviderClass instead of hardcoded passwords
 auth:
-  postgresPassword: "dev-postgres-password"
-  database: "joget" # Changed to joget database
-  username: "joget_user" # Changed to joget user
-  password: "joget_password" # Joget user password
+  existingSecret: "postgresql-secrets"
+  secretKeys:
+    adminPasswordKey: "postgres-password"
+    userPasswordKey: "user-password"
+    databaseKey: "database"
+  username: "joget_user"  # Non-sensitive, can stay hardcoded
+
+# Use workload identity service account
+serviceAccount:
+  create: false
+  name: "postgresql-workload-identity"
 
 # Primary PostgreSQL instance configuration
 primary:
-  # Persistence configuration
   persistence:
     enabled: true
     size: 10Gi
@@ -16,7 +21,6 @@ primary:
     accessModes:
       - ReadWriteOnce
 
-  # Development resource limits
   resources:
     limits:
       memory: 1Gi
@@ -25,22 +29,37 @@ primary:
       memory: 512Mi
       cpu: 250m
 
-  # Service configuration
+  # Add CSI volume for secret mounting
+  extraVolumes:
+  - name: secrets-store
+    csi:
+      driver: secrets-store.csi.k8s.io
+      readOnly: true
+      volumeAttributes:
+        secretProviderClass: "postgresql-secrets"
+  
+  extraVolumeMounts:
+  - name: secrets-store
+    mountPath: "/mnt/secrets-store"
+    readOnly: true
+
+  # Add workload identity label - CRITICAL for Azure Key Vault access
+  podLabels:
+    azure.workload.identity/use: "true"
+
   service:
     ports:
       postgresql: 5432
 
-  # Initialize database with Joget schema
+  # Updated initdb to use secure passwords from secrets
   initdb:
     scripts:
       01-create-joget-db.sql: |
-        -- Create Joget database and user automatically
+        -- Create Joget database and user using secure passwords from Key Vault
         CREATE DATABASE joget;
-        CREATE USER joget_user WITH PASSWORD 'joget_password';
+        CREATE USER joget_user WITH PASSWORD :'POSTGRES_PASSWORD';
         GRANT ALL PRIVILEGES ON DATABASE joget TO joget_user;
         ALTER USER joget_user CREATEDB;
-
-        -- Connect to joget database and set permissions
         \c joget;
         GRANT ALL ON SCHEMA public TO joget_user;
         GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO joget_user;

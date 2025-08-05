@@ -1,0 +1,9 @@
+resource_group_name = "rg-aks-data-dev"
+location            = "West Europe"
+cluster_name        = "aks-data-dev-test"
+kubernetes_version  = "1.32.5"
+system_node_count   = 2
+subscription_id     = "ad970209-4f46-4078-abf8-c817563e20a6"
+workload_identity_namespace        = "default"
+workload_identity_service_account  = "workload-identity-sa"
+keyvaultname       = "kv-aks-data-dev"

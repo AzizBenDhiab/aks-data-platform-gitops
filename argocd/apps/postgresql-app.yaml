@@ -1,4 +1,3 @@
-# argocd/postgresql-app.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -11,18 +10,24 @@ metadata:
 spec:
   project: default
   sources:
-    - repoURL: https://charts.bitnami.com/bitnami
-      targetRevision: 12.12.10
-      chart: postgresql
-      helm:
-        valueFiles:
-          - $values/values/postgresql-values.yaml
-    - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
-      targetRevision: HEAD
-      ref: values
+  # First source: Manifests for SecretProviderClass and ServiceAccount
+  - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
+    targetRevision: HEAD
+    path: manifests/postgresql
+  # Second source: Helm chart
+  - repoURL: https://charts.bitnami.com/bitnami
+    targetRevision: 12.12.10
+    chart: postgresql
+    helm:
+      valueFiles:
+      - $values/values/postgresql-values.yaml
+  # Third source: Values repository
+  - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
+    targetRevision: HEAD
+    ref: values
   destination:
     server: https://kubernetes.default.svc
-    namespace: joget # Changed to joget namespace
+    namespace: joget
   syncPolicy:
     automated:
       prune: true
