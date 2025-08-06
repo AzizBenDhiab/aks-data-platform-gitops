@@ -24,6 +24,7 @@ postgresql:
     existingSecret: "superset-secrets"
     secretKeys:
       adminPasswordKey: "postgres-password"
+      userPasswordKey: "postgres-password"
     database: "superset"
     username: "superset"
   
