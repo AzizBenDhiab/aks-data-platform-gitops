@@ -27,7 +27,7 @@ metadata:
   name: joget-workload-identity  # ✅ Renamed from "joget" to follow convention
   namespace: joget
   annotations:
-    azure.workload.identity/client-id: "__AZURE_CLIENT_ID__"  # ✅ Added workload identity
+    azure.workload.identity/client-id: "5b75c02e-d2be-4da7-9a1b-c252f637fcb9" # "__AZURE_CLIENT_ID__"  # ✅ Added workload identity
 ---
 # RBAC for clustering (updated to use new service account name)
 apiVersion: rbac.authorization.k8s.io/v1
@@ -64,8 +64,8 @@ spec:
   provider: azure
   parameters:
     usePodIdentity: "false"
-    clientID: "__AZURE_CLIENT_ID__"
-    keyvaultName: "__AZURE_KEYVAULT_NAME__"
+    clientID: "5b75c02e-d2be-4da7-9a1b-c252f637fcb9" # "__AZURE_CLIENT_ID__"
+    keyvaultName: "kv-aks-data-dev" # "__AZURE_KEYVAULT_NAME__"
     cloudName: ""
     objects: |
       array:
@@ -75,7 +75,7 @@ spec:
         - |
           objectName: joget-user-password
           objectType: secret
-    tenantId: "__AZURE_TENANT_ID__"
+    tenantId: "21cf1d1a-df91-4ca6-aea2-104120ebaa3c" # "__AZURE_TENANT_ID__"
   secretObjects:
   - secretName: joget-secrets
     type: Opaque
