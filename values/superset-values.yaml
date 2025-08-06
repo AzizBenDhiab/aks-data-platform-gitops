@@ -12,12 +12,12 @@ configOverrides:
       'origins': ['http://localhost:8088']
     }
 
-# Use workload identity service account
+# Use workload identity service account for main Superset components
 serviceAccount:
   create: false
   name: "superset-workload-identity"
 
-# PostgreSQL configuration using existing secret
+# PostgreSQL configuration using existing secret AND workload identity
 postgresql:
   enabled: true
   auth:
@@ -26,11 +26,36 @@ postgresql:
       adminPasswordKey: "postgres-password"
     database: "superset"
     username: "superset"
+  
+  # ✅ CRITICAL: Configure PostgreSQL to use workload identity
+  serviceAccount:
+    create: false
+    name: "superset-workload-identity"
+  
   primary:
     persistence:
       enabled: true
       size: 10Gi
       storageClass: "managed-csi"
+    
+    # ✅ Add workload identity label to PostgreSQL pods
+    podLabels:
+      azure.workload.identity/use: "true"
+    
+    # ✅ Add CSI volume for secret mounting to PostgreSQL
+    extraVolumes:
+    - name: secrets-store
+      csi:
+        driver: secrets-store.csi.k8s.io
+        readOnly: true
+        volumeAttributes:
+          secretProviderClass: "superset-secrets"
+    
+    extraVolumeMounts:
+    - name: secrets-store
+      mountPath: "/mnt/secrets-store"
+      readOnly: true
+    
     resources:
       limits:
         memory: 512Mi
