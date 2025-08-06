@@ -24,11 +24,10 @@ spec:
           - name: global.storageClass
             value: "managed-csi"
 
-          # Redis configuration using existing secret
-          - name: global.redis.existingSecret
-            value: "kobotoolbox-secrets"
-          - name: global.redis.existingSecretPasswordKey
-            value: "redis-password"
+          # Redis configuration - chart doesn't seem to support existing secrets for Redis password
+          # You may need to modify the chart or use a different approach for Redis secrets
+          - name: global.redis.password
+            value: "redis-secure-password-2024"
           - name: rediscache.enabled
             value: "true"
           - name: rediscache.usePassword
@@ -58,23 +57,19 @@ spec:
           - name: general.forceInternal
             value: "false"
 
-          # Super user configuration using existing secret
+          # Super user configuration - chart doesn't appear to support existing secrets
           - name: general.superUser.username
             value: "admin"
-          - name: general.superUser.existingSecret
-            value: "kobotoolbox-secrets"
-          - name: general.superUser.existingSecretPasswordKey
-            value: "admin-password"
+          - name: general.superUser.password
+            value: "KoboAdmin2024!"
 
           # Support email
           - name: general.supportEmail
             value: "support@kobotoolbox.local"
 
-          # Django secret - use existing secret reference
-          - name: general.djangoSecret.existingSecret
-            value: "kobotoolbox-secrets"
-          - name: general.djangoSecret.existingSecretKey
-            value: "django-secret"
+          # Django secret - chart expects a direct string value
+          - name: general.djangoSecret
+            value: "KoboProductionSecret2024ChangeInProduction"
 
           # Media storage configuration
           - name: general.mediaStorage.enabled
@@ -90,7 +85,7 @@ spec:
           - name: general.sentry.environment
             value: "production"
 
-          # PostgreSQL configuration using existing secret
+          # PostgreSQL configuration - using existing secret if chart supports it
           - name: postgresql.enabled
             value: "true"
           - name: postgresql.kobocatDatabase
@@ -106,7 +101,7 @@ spec:
           - name: postgresql.auth.username
             value: "postgres"
 
-          # MongoDB configuration using existing secret
+          # MongoDB configuration - using existing secret if chart supports it
           - name: mongodb.enabled
             value: "true"
           - name: mongodb.auth.existingSecret
