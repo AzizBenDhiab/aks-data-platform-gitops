@@ -10,86 +10,86 @@ metadata:
 spec:
   project: default
   sources:
-  # Manifests for SecretProviderClass and ServiceAccount
-  - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
-    targetRevision: HEAD
-    path: manifests/kobotoolbox
-  # Helm chart
-  - repoURL: https://github.com/AzizBenDhiab/oaf-public-charts.git
-    targetRevision: main
-    path: charts/kobotoolbox
-    helm:
-      parameters:
-        # CRITICAL: Override the hardcoded global.storageClass
-        - name: global.storageClass
-          value: "managed-csi"
+    # Manifests for SecretProviderClass and ServiceAccount
+    - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
+      targetRevision: HEAD
+      path: manifests/kobotoolbox
+    # Helm chart
+    - repoURL: https://github.com/AzizBenDhiab/oaf-public-charts.git
+      targetRevision: main
+      path: charts/kobotoolbox
+      helm:
+        parameters:
+          # CRITICAL: Override the hardcoded global.storageClass
+          - name: global.storageClass
+            value: "managed-csi"
 
-        # Use existing secrets instead of hardcoded passwords
-        - name: global.redis.existingSecret
-          value: "kobotoolbox-secrets"
-        - name: global.redis.existingSecretPasswordKey
-          value: "redis-password"
+          # Use existing secrets instead of hardcoded passwords
+          - name: global.redis.existingSecret
+            value: "kobotoolbox-secrets"
+          - name: global.redis.existingSecretPasswordKey
+            value: "redis-password"
 
-        # General configuration
-        - name: general.externalDomain
-          value: "kobotoolbox.local"
-        - name: general.externalScheme
-          value: "http"
-        - name: general.replicas
-          value: "1"
-        - name: general.serviceType
-          value: "ClusterIP"
+          # General configuration
+          - name: general.externalDomain
+            value: "kobotoolbox.local"
+          - name: general.externalScheme
+            value: "http"
+          - name: general.replicas
+            value: "1"
+          - name: general.serviceType
+            value: "ClusterIP"
 
-        # Super user configuration using existing secret
-        - name: general.superUser.username
-          value: "admin"
-        - name: general.superUser.existingSecret
-          value: "kobotoolbox-secrets"
-        - name: general.superUser.existingSecretPasswordKey
-          value: "admin-password"
+          # Super user configuration using existing secret
+          - name: general.superUser.username
+            value: "admin"
+          - name: general.superUser.existingSecret
+            value: "kobotoolbox-secrets"
+          - name: general.superUser.existingSecretPasswordKey
+            value: "admin-password"
 
-        # Django secret from Key Vault
-        - name: general.djangoSecret.existingSecret
-          value: "kobotoolbox-secrets"
-        - name: general.djangoSecret.existingSecretKey
-          value: "django-secret"
+          # Django secret from Key Vault
+          - name: general.djangoSecret.existingSecret
+            value: "kobotoolbox-secrets"
+          - name: general.djangoSecret.existingSecretKey
+            value: "django-secret"
 
-        # PostgreSQL configuration using existing secret
-        - name: postgresql.enabled
-          value: "true"
-        - name: postgresql.auth.existingSecret
-          value: "kobotoolbox-secrets"
-        - name: postgresql.auth.secretKeys.adminPasswordKey
-          value: "postgres-admin-password"
-        - name: postgresql.auth.secretKeys.userPasswordKey
-          value: "postgres-user-password"
+          # PostgreSQL configuration using existing secret
+          - name: postgresql.enabled
+            value: "true"
+          - name: postgresql.auth.existingSecret
+            value: "kobotoolbox-secrets"
+          - name: postgresql.auth.secretKeys.adminPasswordKey
+            value: "postgres-admin-password"
+          - name: postgresql.auth.secretKeys.userPasswordKey
+            value: "postgres-user-password"
 
-        # MongoDB configuration using existing secret
-        - name: mongodb.enabled
-          value: "true"
-        - name: mongodb.auth.existingSecret
-          value: "kobotoolbox-secrets"
-        - name: mongodb.auth.secretKeys.rootPasswordKey
-          value: "mongo-root-password"
-        - name: mongodb.auth.secretKeys.userPasswordKey
-          value: "mongo-user-password"
+          # MongoDB configuration using existing secret
+          - name: mongodb.enabled
+            value: "true"
+          - name: mongodb.auth.existingSecret
+            value: "kobotoolbox-secrets"
+          - name: mongodb.auth.secretKeys.rootPasswordKey
+            value: "mongo-root-password"
+          - name: mongodb.auth.secretKeys.userPasswordKey
+            value: "mongo-user-password"
 
-        # Service account configuration
-        - name: serviceAccount.create
-          value: "false"
-        - name: serviceAccount.name
-          value: "kobotoolbox-workload-identity"
+          # Service account configuration
+          - name: serviceAccount.create
+            value: "false"
+          - name: serviceAccount.name
+            value: "kobotoolbox-workload-identity"
 
-        # Workload identity labels
-        - name: podLabels.azure\.workload\.identity/use
-          value: "true"
+          # Workload identity labels
+          - name: podLabels.azure\.workload\.identity/use
+            value: "true"
 
-      valueFiles:
-        - $values/values/kobotoolbox-values.yaml
-  # Values repository
-  - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
-    targetRevision: HEAD
-    ref: values
+        valueFiles:
+          - $values/values/kobotoolbox-values.yaml
+    # Values repository
+    - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
+      targetRevision: HEAD
+      ref: values
   destination:
     server: https://kubernetes.default.svc
     namespace: kobotoolbox
