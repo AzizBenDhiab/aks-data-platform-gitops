@@ -1,9 +1,8 @@
-# values/superset-values.yaml - DEVELOPMENT VERSION
-
-# Superset configuration overrides
+# Superset configuration overrides using secrets
 configOverrides:
   secret: |
-    SECRET_KEY = 'dev-secret-key-change-for-production'
+    import os
+    SECRET_KEY = os.environ.get('SUPERSET_SECRET_KEY', 'fallback-secret')
     # Enable CORS for development
     ENABLE_CORS = True
     CORS_OPTIONS = {
@@ -13,14 +12,20 @@ configOverrides:
       'origins': ['http://localhost:8088']
     }
 
-# ENABLE internal dependencies (much simpler!)
+# Use workload identity service account
+serviceAccount:
+  create: false
+  name: "superset-workload-identity"
+
+# PostgreSQL configuration using existing secret
 postgresql:
   enabled: true
   auth:
-    postgresPassword: "superset"
+    existingSecret: "superset-secrets"
+    secretKeys:
+      adminPasswordKey: "postgres-password"
     database: "superset"
     username: "superset"
-    password: "superset"
   primary:
     persistence:
       enabled: true
@@ -37,7 +42,7 @@ postgresql:
 redis:
   enabled: true
   auth:
-    enabled: false # Disable auth for simplicity
+    enabled: false
   master:
     persistence:
       enabled: true
@@ -51,9 +56,28 @@ redis:
         memory: 128Mi
         cpu: 100m
 
-# Superset Node (web server) configuration
+# Superset Node configuration with workload identity
 supersetNode:
   replicaCount: 1
+  podLabels:
+    azure.workload.identity/use: "true"
+  extraVolumes:
+  - name: secrets-store
+    csi:
+      driver: secrets-store.csi.k8s.io
+      readOnly: true
+      volumeAttributes:
+        secretProviderClass: "superset-secrets"
+  extraVolumeMounts:
+  - name: secrets-store
+    mountPath: "/mnt/secrets-store"
+    readOnly: true
+  extraEnv:
+    SUPERSET_SECRET_KEY:
+      valueFrom:
+        secretKeyRef:
+          name: superset-secrets
+          key: secret-key
   resources:
     limits:
       memory: 1Gi
@@ -61,14 +85,29 @@ supersetNode:
     requests:
       memory: 512Mi
       cpu: 250m
-  podDisruptionBudget:
-    enabled: false
-  autoscaling:
-    enabled: false
 
-# Superset Worker (Celery) configuration
+# Superset Worker configuration
 supersetWorker:
   replicaCount: 1
+  podLabels:
+    azure.workload.identity/use: "true"
+  extraVolumes:
+  - name: secrets-store
+    csi:
+      driver: secrets-store.csi.k8s.io
+      readOnly: true
+      volumeAttributes:
+        secretProviderClass: "superset-secrets"
+  extraVolumeMounts:
+  - name: secrets-store
+    mountPath: "/mnt/secrets-store"
+    readOnly: true
+  extraEnv:
+    SUPERSET_SECRET_KEY:
+      valueFrom:
+        secretKeyRef:
+          name: superset-secrets
+          key: secret-key
   resources:
     limits:
       memory: 512Mi
@@ -76,16 +115,12 @@ supersetWorker:
     requests:
       memory: 256Mi
       cpu: 125m
-  podDisruptionBudget:
-    enabled: false
-  autoscaling:
-    enabled: false
 
-# Disable Celery Beat for development
+# Disable Celery Beat
 supersetCeleryBeat:
   enabled: false
 
-# Initial setup configuration
+# Initial setup with admin password from secret
 init:
   loadExamples: true
   createAdmin: true
@@ -94,21 +129,22 @@ init:
     firstname: Admin
     lastname: User
     email: admin@example.com
-    password: admin
+  extraEnv:
+    SUPERSET_ADMIN_PASSWORD:
+      valueFrom:
+        secretKeyRef:
+          name: superset-secrets
+          key: admin-password
 
-# Service configuration
 service:
   type: ClusterIP
   port: 8088
 
-# Ingress configuration (disabled for development)
 ingress:
   enabled: false
 
-# Security context
 runAsUser: 1000
 
-# Bootstrap script with required packages
 bootstrapScript: |
   #!/bin/bash
   pip install --no-cache-dir \

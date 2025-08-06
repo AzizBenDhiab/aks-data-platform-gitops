@@ -116,14 +116,50 @@ resource "azurerm_role_assignment" "keyvault_secrets_officer" {
   principal_id         = data.azurerm_client_config.current.object_id
 }
 
-# Federated identity credential for workload identity
-resource "azurerm_federated_identity_credential" "aks_federated_credential" {
-  name                = "${var.cluster_name}-federated-credential"
+# Federated identity credentials for all applications
+resource "azurerm_federated_identity_credential" "postgresql_federated_credential" {
+  name                = "${var.cluster_name}-postgresql-federated-credential"
   resource_group_name = azurerm_resource_group.aks_rg.name
   audience            = ["api://AzureADTokenExchange"]
   issuer              = azurerm_kubernetes_cluster.aks.oidc_issuer_url
   parent_id           = azurerm_user_assigned_identity.keyvault_identity.id
-  subject             = "system:serviceaccount:${var.workload_identity_namespace}:${var.workload_identity_service_account}"
+  subject             = "system:serviceaccount:joget:postgresql-workload-identity"
+}
+
+resource "azurerm_federated_identity_credential" "joget_federated_credential" {
+  name                = "${var.cluster_name}-joget-federated-credential"
+  resource_group_name = azurerm_resource_group.aks_rg.name
+  audience            = ["api://AzureADTokenExchange"]
+  issuer              = azurerm_kubernetes_cluster.aks.oidc_issuer_url
+  parent_id           = azurerm_user_assigned_identity.keyvault_identity.id
+  subject             = "system:serviceaccount:joget:joget-workload-identity"
+}
+
+resource "azurerm_federated_identity_credential" "superset_federated_credential" {
+  name                = "${var.cluster_name}-superset-federated-credential"
+  resource_group_name = azurerm_resource_group.aks_rg.name
+  audience            = ["api://AzureADTokenExchange"]
+  issuer              = azurerm_kubernetes_cluster.aks.oidc_issuer_url
+  parent_id           = azurerm_user_assigned_identity.keyvault_identity.id
+  subject             = "system:serviceaccount:superset:superset-workload-identity"
+}
+
+resource "azurerm_federated_identity_credential" "nifi_federated_credential" {
+  name                = "${var.cluster_name}-nifi-federated-credential"
+  resource_group_name = azurerm_resource_group.aks_rg.name
+  audience            = ["api://AzureADTokenExchange"]
+  issuer              = azurerm_kubernetes_cluster.aks.oidc_issuer_url
+  parent_id           = azurerm_user_assigned_identity.keyvault_identity.id
+  subject             = "system:serviceaccount:nifi-prod:nifi-workload-identity"
+}
+
+resource "azurerm_federated_identity_credential" "kobotoolbox_federated_credential" {
+  name                = "${var.cluster_name}-kobotoolbox-federated-credential"
+  resource_group_name = azurerm_resource_group.aks_rg.name
+  audience            = ["api://AzureADTokenExchange"]
+  issuer              = azurerm_kubernetes_cluster.aks.oidc_issuer_url
+  parent_id           = azurerm_user_assigned_identity.keyvault_identity.id
+  subject             = "system:serviceaccount:kobotoolbox:kobotoolbox-workload-identity"
 }
 
 # Example secret in Key Vault

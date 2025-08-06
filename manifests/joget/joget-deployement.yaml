@@ -1,4 +1,4 @@
-# Joget DX8 Configuration - Fixed with Official Paths + PostgreSQL
+# Joget DX8 Configuration - Updated with Azure Key Vault Integration
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -6,7 +6,7 @@ metadata:
   labels:
     name: joget
 ---
-# Persistent Volume Claim (using Azure managed-csi like yours)
+# Persistent Volume Claim (no changes)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -20,14 +20,16 @@ spec:
     requests:
       storage: 10Gi
 ---
-# Service Account for clustering
+# Service Account for clustering AND workload identity (renamed and updated)
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: joget
+  name: joget-workload-identity  # ✅ Renamed from "joget" to follow convention
   namespace: joget
+  annotations:
+    azure.workload.identity/client-id: "__AZURE_CLIENT_ID__"  # ✅ Added workload identity
 ---
-# RBAC for clustering
+# RBAC for clustering (updated to use new service account name)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -45,12 +47,43 @@ metadata:
   namespace: joget
 subjects:
 - kind: ServiceAccount
-  name: joget
+  name: joget-workload-identity  # ✅ Updated to use new service account name
   namespace: joget
 roleRef:
   kind: Role
   name: joget-cluster-role
   apiGroup: rbac.authorization.k8s.io
+---
+# SecretProviderClass for Azure Key Vault secrets
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: joget-secrets
+  namespace: joget
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    clientID: "__AZURE_CLIENT_ID__"
+    keyvaultName: "__AZURE_KEYVAULT_NAME__"
+    cloudName: ""
+    objects: |
+      array:
+        - |
+          objectName: postgres-admin-password
+          objectType: secret
+        - |
+          objectName: joget-user-password
+          objectType: secret
+    tenantId: "__AZURE_TENANT_ID__"
+  secretObjects:
+  - secretName: joget-secrets
+    type: Opaque
+    data:
+    - objectName: postgres-admin-password
+      key: postgres-password
+    - objectName: joget-user-password
+      key: joget-password
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -68,17 +101,26 @@ spec:
     metadata:
       labels:
         app: joget-dx8-tomcat9
+        azure.workload.identity/use: "true"  # ✅ Added for workload identity
     spec:
-      serviceAccountName: joget
+      serviceAccountName: joget-workload-identity  # ✅ Updated to use new service account name
       volumes:
         - name: joget-dx8-tomcat9-pv
           persistentVolumeClaim:
-            claimName: joget-dx8-tomcat9-pvc  # Fixed: matches PVC name
+            claimName: joget-dx8-tomcat9-pvc
+        - name: secrets-store  # ✅ Added CSI volume for secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: "joget-secrets"
+      
       securityContext:
         runAsUser: 1000
-        fsGroup: 0  # Match official documentation
+        fsGroup: 0
+      
       initContainers:
-      # Wait for PostgreSQL
+      # Wait for PostgreSQL - Updated to use secrets
       - name: wait-for-postgresql
         image: postgres:13-alpine
         command: ['sh', '-c']
@@ -92,27 +134,37 @@ spec:
           echo "PostgreSQL is ready!"
         env:
         - name: PGPASSWORD
-          value: "joget_password"
+          valueFrom:
+            secretKeyRef:
+              name: joget-secrets  # ✅ Use secret instead of hardcoded password
+              key: joget-password
+        volumeMounts:  # ✅ Added volume mount for secrets
+        - name: secrets-store
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
       
-      # Setup PostgreSQL configuration in the OFFICIAL path
+      # Setup PostgreSQL configuration - Updated to use secrets
       - name: setup-joget-config
         image: busybox:1.36
         command: ['sh', '-c']
         args:
         - |
-          echo "Setting up Joget DX8 configuration in OFFICIAL path..."
+          echo "Setting up Joget DX8 configuration with secure passwords..."
           
           # Create directory at the OFFICIAL mount path
           mkdir -p /opt/joget/wflow
           
-          # Create PostgreSQL configuration
+          # Read password from mounted secret
+          JOGET_PASSWORD=$(cat /mnt/secrets-store/joget-password)
+          
+          # Create PostgreSQL configuration with secure password
           cat > /opt/joget/wflow/app_datasource.properties << 'EOF'
           currentProfile=postgresql
           EOF
           
-          cat > /opt/joget/wflow/app_datasource-postgresql.properties << 'EOF'
+          cat > /opt/joget/wflow/app_datasource-postgresql.properties << EOF
           workflowUser=joget_user
-          workflowPassword=joget_password
+          workflowPassword=$JOGET_PASSWORD
           workflowDriver=org.postgresql.Driver
           workflowUrl=jdbc\:postgresql\://postgresql:5432/joget
           profileName=postgresql
@@ -128,12 +180,15 @@ spec:
           
           chmod -R 755 /opt/joget/wflow/
           
-          echo "Configuration files created at OFFICIAL path:"
+          echo "Configuration files created with secure passwords:"
           ls -la /opt/joget/wflow/
           echo "Setup complete!"
         volumeMounts:
         - name: joget-dx8-tomcat9-pv
           mountPath: /opt/joget/wflow
+        - name: secrets-store  # ✅ Added volume mount for secrets
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
       
       containers:
         - name: joget-dx8-tomcat9
@@ -145,6 +200,9 @@ spec:
           volumeMounts:
             - name: joget-dx8-tomcat9-pv
               mountPath: /opt/joget/wflow  # OFFICIAL path from documentation
+            - name: secrets-store  # ✅ Added volume mount for secrets
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
           env:
             - name: KUBERNETES_NAMESPACE
               valueFrom:
@@ -163,7 +221,7 @@ spec:
               cpu: 500m
               memory: 1Gi
 ---
-# Headless Service for clustering
+# Headless Service for clustering (no changes needed)
 apiVersion: v1
 kind: Service
 metadata:
@@ -177,7 +235,7 @@ spec:
   selector:
     app: joget-dx8-tomcat9
 ---
-# Main Service (LoadBalancer for external access)
+# Main Service (no changes needed)
 apiVersion: v1
 kind: Service
 metadata:

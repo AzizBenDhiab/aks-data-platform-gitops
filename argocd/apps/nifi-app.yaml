@@ -1,4 +1,3 @@
-# argocd/nifi-prod-app.yaml - PRODUCTION SSL WITH CETIC CHART
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -10,12 +9,23 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  source:
-    repoURL: https://cetic.github.io/helm-charts
+  sources:
+  # Manifests for SecretProviderClass and ServiceAccount
+  - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
+    targetRevision: HEAD
+    path: manifests/nifi
+  # Helm chart
+  - repoURL: https://cetic.github.io/helm-charts
     targetRevision: "1.2.1"
     chart: nifi
     helm:
       values: |
+        # Use workload identity service account
+        sts:
+          serviceAccount:
+            create: false
+            name: nifi-workload-identity
+        
         # PRODUCTION CONFIGURATION
         replicaCount: 1
 
@@ -24,100 +34,72 @@ spec:
           tag: "1.23.2"
           pullPolicy: IfNotPresent
 
-        # PROPER SSL CONFIGURATION
+        # Use secrets from Key Vault
         properties:
-          # SSL Properties  
-          sensitiveKey: "ProductionNiFiSecretKey2024"  # 12+ chars required
+          sensitiveKey: ""  # Will be set via environment variable
           algorithm: NIFI_PBKDF2_AES_GCM_256
-          externalSecure: false  # We handle SSL internally
+          externalSecure: false
           httpsPort: 8443
-          webProxyHost: "nifi-prod.data-platform.local"  # Clean hostname
-          
-          # Disable problematic cluster features for single node
+          webProxyHost: "nifi-prod.data-platform.local"
           isNode: false
           clusterPort: 6007
-          
-          # Archive and storage settings
-          archiveMaxRetentionPeriod: "7 days"
-          archiveMaxUsagePercentage: "80%"
-          provenanceStorage: "10 GB"
-          provenanceMaxStorageTime: "14 days"
-          flowArchiveMaxTime: "30 days"
-          flowArchiveMaxStorage: "1 GB"
-          
-          # Network interface configuration
-          safetyValve:
-            nifi.web.http.network.interface.default: eth0
-            nifi.web.http.network.interface.lo: lo
-            # Force clean hostname for certificate generation
-            nifi.cluster.node.address: nifi-prod-0
-            nifi.remote.input.host: nifi-prod-0
 
-        # AUTHENTICATION CONFIGURATION
+        # SSL Configuration using secrets
         auth:
           admin: "CN=admin,OU=NIFI"
-          
-          # SSL Configuration
           SSL:
-            keystorePasswd: "ProductionKeystore2024"
-            truststorePasswd: "ProductionTruststore2024"
-          
-          # Single user authentication (disable LDAP/OIDC)
+            keystorePasswd: ""  # Will be set via environment variable
+            truststorePasswd: ""  # Will be set via environment variable
           singleUser:
             username: admin
-            password: "ProductionNiFi2024Secure!"  # 12+ chars
-          
-          # Disable client certificate auth for simplicity
-          clientAuth:
-            enabled: false
-          
-          # Disable LDAP
-          ldap:
-            enabled: false
-          
-          # Disable OIDC
-          oidc:
-            enabled: false
+            password: ""  # Will be set via environment variable
 
-        # DISABLE EXTERNAL CERTIFICATE MANAGERS
-        ca:
-          enabled: false
-
-        certManager:
-          enabled: false
-
-        # SIMPLIFIED ZOOKEEPER (SINGLE NODE)
-        zookeeper:
-          enabled: false  # Disable for single node setup
-          url: ""
-          port: 2181
+        # Add workload identity labels and secret volumes
+        sts:
+          pod:
+            labels:
+              azure.workload.identity/use: "true"
+            volumes:
+            - name: secrets-store
+              csi:
+                driver: secrets-store.csi.k8s.io
+                readOnly: true
+                volumeAttributes:
+                  secretProviderClass: "nifi-secrets"
+            volumeMounts:
+            - name: secrets-store
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
+            env:
+            - name: NIFI_SENSITIVE_PROPS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nifi-secrets
+                  key: sensitive-key
+            - name: KEYSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nifi-secrets
+                  key: keystore-password
+            - name: TRUSTSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nifi-secrets
+                  key: truststore-password
+            - name: SINGLE_USER_CREDENTIALS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nifi-secrets
+                  key: admin-password
 
         # PERSISTENCE CONFIGURATION
         persistence:
           enabled: true
           accessModes: [ReadWriteOnce]
-          
-          # Use single volume with subPath for efficiency
           subPath:
             enabled: true
             name: data
             size: 50Gi
-          
-          # Individual storage sizes (ignored when subPath enabled)
-          configStorage:
-            size: 500Mi
-          authconfStorage:
-            size: 500Mi
-          dataStorage:
-            size: 5Gi
-          flowfileRepoStorage:
-            size: 10Gi
-          contentRepoStorage:
-            size: 15Gi
-          provenanceRepoStorage:
-            size: 15Gi
-          logStorage:
-            size: 2Gi
 
         # PRODUCTION RESOURCES
         resources:
@@ -128,97 +110,18 @@ spec:
             cpu: 2000m
             memory: 4Gi
 
-        # JVM MEMORY CONFIGURATION
         jvmMemory: 4g
 
-        # SERVICE CONFIGURATION
         service:
           type: ClusterIP
           httpsPort: 8443
-          annotations: {}
-          
-          # Disable additional processor ports
-          processors:
-            enabled: false
 
-        # HEADLESS SERVICE
-        headless:
-          type: ClusterIP
-          annotations:
-            service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
-
-        # SECURITY CONTEXT
         securityContext:
           runAsUser: 1000
           fsGroup: 1000
 
-        # STATEFULSET CONFIGURATION
-        sts:
-          podManagementPolicy: Parallel
-          AntiAffinity: soft
-          useHostNetwork: false
-          
-          # Extended startup probe for production
-          startupProbe:
-            enabled: true
-            failureThreshold: 120  # 20 minutes max startup time
-            periodSeconds: 10
-          
-          pod:
-            annotations:
-              security.alpha.kubernetes.io/sysctls: net.ipv4.ip_local_port_range=10000 65000
-          
-          serviceAccount:
-            create: true
-            name: nifi-prod
-            annotations: {}
-
-        # DISABLE INGRESS (WE'LL ADD LATER)
         ingress:
           enabled: false
-
-        # PRODUCTION ENVIRONMENT
-        env:
-          - name: ENVIRONMENT
-            value: "production"
-          - name: NIFI_JVM_HEAP_INIT
-            value: "4g"
-          - name: NIFI_JVM_HEAP_MAX
-            value: "4g"
-
-        # MONITORING (DISABLED FOR NOW)
-        metrics:
-          prometheus:
-            enabled: false
-            port: 9092
-            serviceMonitor:
-              enabled: false
-
-        # REGISTRY (DISABLED FOR NOW)
-        registry:
-          enabled: false
-
-        # NODE SELECTION
-        nodeSelector: {}
-        tolerations: []
-        affinity: {}
-
-        # TERMINATION
-        terminationGracePeriodSeconds: 60
-
-        # SIDECAR LOGGING
-        sidecar:
-          image: busybox
-          tag: "1.32.0"
-          imagePullPolicy: IfNotPresent
-
-        logresources:
-          requests:
-            cpu: 10m
-            memory: 10Mi
-          limits:
-            cpu: 50m
-            memory: 50Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: nifi-prod
