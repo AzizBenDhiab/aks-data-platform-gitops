@@ -34,22 +34,27 @@ spec:
           tag: "1.23.2"
           pullPolicy: IfNotPresent
 
-        # Use secrets from Key Vault
+        # Disable SSL for initial deployment, then enable after secrets are working
         properties:
           sensitiveKey: ""  # Will be set via environment variable
           algorithm: NIFI_PBKDF2_AES_GCM_256
           externalSecure: false
           httpsPort: 8443
+          httpPort: 8080  # Add HTTP port for fallback
           webProxyHost: "nifi-prod.data-platform.local"
           isNode: false
           clusterPort: 6007
+          # Add these properties to help with startup
+          needClientAuth: false
+          provenanceStorage: 10 GB
 
-        # SSL Configuration using secrets
+        # Temporarily disable SSL until secrets are working
         auth:
           admin: "CN=admin,OU=NIFI"
           SSL:
-            keystorePasswd: ""  # Will be set via environment variable
-            truststorePasswd: ""  # Will be set via environment variable
+            enabled: false  # Disable SSL initially
+            keystorePasswd: ""
+            truststorePasswd: ""
           singleUser:
             username: admin
             password: ""  # Will be set via environment variable
@@ -76,21 +81,30 @@ spec:
                 secretKeyRef:
                   name: nifi-secrets
                   key: sensitive-key
+                  optional: true  # Make optional to prevent startup failure
             - name: KEYSTORE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: nifi-secrets
                   key: keystore-password
+                  optional: true
             - name: TRUSTSTORE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: nifi-secrets
                   key: truststore-password
+                  optional: true
             - name: SINGLE_USER_CREDENTIALS_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: nifi-secrets
                   key: admin-password
+                  optional: true
+            # Add fallback values
+            - name: NIFI_WEB_HTTP_PORT
+              value: "8080"
+            - name: NIFI_WEB_HTTPS_PORT
+              value: "8443"
 
         # PERSISTENCE CONFIGURATION
         persistence:
@@ -99,21 +113,22 @@ spec:
           subPath:
             enabled: true
             name: data
-            size: 50Gi
+          size: 50Gi
 
-        # PRODUCTION RESOURCES
+        # PRODUCTION RESOURCES - Reduced for initial testing
         resources:
           limits:
-            cpu: 4000m
-            memory: 8Gi
-          requests:
             cpu: 2000m
             memory: 4Gi
+          requests:
+            cpu: 1000m
+            memory: 2Gi
 
-        jvmMemory: 4g
+        jvmMemory: 2g
 
         service:
           type: ClusterIP
+          httpPort: 8080   # Add HTTP service
           httpsPort: 8443
 
         securityContext:
@@ -122,6 +137,36 @@ spec:
 
         ingress:
           enabled: false
+
+        # Add startup probe to give more time for initialization
+        startupProbe:
+          httpGet:
+            path: /nifi
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+
+        # Add readiness and liveness probes
+        readinessProbe:
+          httpGet:
+            path: /nifi
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        livenessProbe:
+          httpGet:
+            path: /nifi
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+
   destination:
     server: https://kubernetes.default.svc
     namespace: nifi-prod
