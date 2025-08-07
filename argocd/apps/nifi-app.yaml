@@ -14,13 +14,13 @@ spec:
   - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
     targetRevision: HEAD
     path: manifests/nifi
-  # Helm chart with proper structure
+  # Helm chart with CORRECT service account structure
   - repoURL: https://cetic.github.io/helm-charts
     targetRevision: "1.2.1"
     chart: nifi
     helm:
       values: |
-        # Basic configuration
+        # Single node first to get secrets working
         replicaCount: 1
 
         image:
@@ -28,35 +28,30 @@ spec:
           tag: "1.23.2"
           pullPolicy: IfNotPresent
 
-        # CORRECT way to configure single user auth for this chart
+        # Single user auth - will be overridden by environment variables
         singleUser:
           username: admin
-          password: ""  # Will be overridden by environment variable
+          password: "temporaryPassword123!"
 
-        # Properties that the chart actually supports
+        # Properties
         properties:
-          sensitiveKey: ""  # Will be overridden by environment variable
+          sensitiveKey: "temporaryKey123456789"
           algorithm: "NIFI_PBKDF2_AES_GCM_256"
           webProxyHost: "nifi-prod.data-platform.local"
           isNode: false
 
-        # Use the service account from our manifests
-        serviceAccount:
-          create: false
-          name: nifi-workload-identity
+        # CRITICAL: Use the correct structure for service account
+        sts:
+          serviceAccount:
+            create: false
+            name: nifi-workload-identity
+          # Add pod annotations for workload identity  
+          pod:
+            annotations:
+              azure.workload.identity/use: "true"
 
-        # Configure secrets using the chart's secret structure
-        secrets:
-          - name: nifi-secrets
-            keys:
-              - admin-password
-              - sensitive-key
-              - keystore-password
-              - truststore-password
-            mountPath: /opt/nifi/nifi-current/secrets
-
-        # Extra environment variables (chart supports this)
-        extraEnvs:
+        # Environment variables from Azure Key Vault secrets
+        env:
           - name: NIFI_SENSITIVE_PROPS_KEY
             valueFrom:
               secretKeyRef:
@@ -80,7 +75,17 @@ spec:
                 name: nifi-secrets
                 key: truststore-password
 
-        # Extra volumes for secret provider class
+        # Secrets using the chart's structure
+        secrets:
+          - name: nifi-secrets
+            keys:
+              - admin-password
+              - sensitive-key
+              - keystore-password
+              - truststore-password
+            mountPath: /opt/nifi/nifi-current/secrets
+
+        # Extra volumes for CSI secret store
         extraVolumes:
           - name: secrets-store
             csi:
@@ -89,15 +94,11 @@ spec:
               volumeAttributes:
                 secretProviderClass: "nifi-secrets"
 
-        # Extra volume mounts
+        # Mount the CSI secret store
         extraVolumeMounts:
           - name: secrets-store
             mountPath: "/mnt/secrets-store"
             readOnly: true
-
-        # Add labels for workload identity
-        podLabels:
-          azure.workload.identity/use: "true"
 
         # Resources
         resources:
@@ -108,7 +109,6 @@ spec:
             cpu: 1500m
             memory: 3Gi
 
-        # JVM settings
         jvmMemory: 2g
 
         # Persistence
@@ -121,7 +121,7 @@ spec:
           type: ClusterIP
           httpsPort: 8443
 
-        # Zookeeper
+        # Zookeeper for future clustering
         zookeeper:
           enabled: true
           replicaCount: 3
@@ -132,7 +132,7 @@ spec:
           runAsGroup: 1000
           fsGroup: 1000
 
-        # Startup probe with longer timeout
+        # Probes with longer timeouts
         startupProbe:
           enabled: true
           initialDelaySeconds: 120
@@ -140,7 +140,6 @@ spec:
           timeoutSeconds: 10
           failureThreshold: 30
 
-        # Readiness probe
         readinessProbe:
           enabled: true
           initialDelaySeconds: 60
@@ -148,7 +147,6 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 3
 
-        # Liveness probe
         livenessProbe:
           enabled: true
           initialDelaySeconds: 180
