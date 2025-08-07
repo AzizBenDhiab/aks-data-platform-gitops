@@ -155,7 +155,7 @@ spec:
           mkdir -p /opt/joget/wflow
           
           # Read password from mounted secret
-          JOGET_PASSWORD=$(cat /mnt/secrets-store/joget-password)
+          JOGET_PASSWORD=$(cat /mnt/secrets-store/joget-user-password)
           
           # Create PostgreSQL configuration with secure password
           cat > /opt/joget/wflow/app_datasource.properties << 'EOF'
