@@ -10,49 +10,51 @@ metadata:
 spec:
   project: default
   sources:
-  # Manifests for SecretProviderClass and ServiceAccount
+  # First source: Your manifests for ServiceAccount and SecretProviderClass
   - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
     targetRevision: HEAD
     path: manifests/nifi
-  # Helm chart
+  # Second source: Helm chart with our custom values
   - repoURL: https://cetic.github.io/helm-charts
     targetRevision: "1.2.1"
     chart: nifi
     helm:
       values: |
-        # Production cluster configuration
-        replicaCount: 3
+        # START WITH SINGLE NODE TO FIX THE SECRET ISSUE FIRST
+        replicaCount: 1
 
         image:
           repository: apache/nifi
           tag: "1.23.2"
           pullPolicy: IfNotPresent
 
-        # Authentication with Key Vault secrets
+        # Critical: Proper auth configuration
         auth:
           singleUser:
             username: admin
-            password: ""  # Will be set by environment variable
+            password: ""  # This will be set by environment variable
 
-        # Properties from Key Vault
+        # Properties
         properties:
-          sensitiveKey: ""  # Will be set by environment variable
+          sensitiveKey: ""  # This will be set by environment variable
           algorithm: NIFI_PBKDF2_AES_GCM_256
           webProxyHost: "nifi-prod.data-platform.local"
-          isNode: true
-          clusterPort: 6007
-          clusterSecure: true
+          isNode: false  # Start with single node first
           needClientAuth: false
 
-        # Use workload identity service account
+        # CRITICAL: Configure the StatefulSet properly
         sts:
+          # Use our service account with workload identity
           serviceAccount:
             create: false
             name: nifi-workload-identity
+          
+          # Pod configuration with secrets
           pod:
             labels:
               azure.workload.identity/use: "true"
-            # Init container to validate secrets
+            
+            # Add init container to validate secrets
             initContainers:
             - name: secret-validator
               image: busybox:1.35
@@ -60,28 +62,38 @@ spec:
               args:
                 - |
                   echo "=== Secret Validation ==="
+                  echo "Checking Azure Key Vault secrets..."
+                  
                   if [ ! -d /mnt/secrets-store ]; then
-                    echo "ERROR: Secrets store not mounted"
+                    echo "ERROR: Secrets store not mounted at /mnt/secrets-store"
+                    ls -la /mnt/ || echo "No /mnt directory"
                     exit 1
                   fi
                   
-                  # Check each secret
-                  for secret in admin-password sensitive-key keystore-password truststore-password; do
+                  echo "Secrets directory contents:"
+                  ls -la /mnt/secrets-store/
+                  
+                  # Check required secrets
+                  required_secrets="admin-password sensitive-key keystore-password truststore-password"
+                  for secret in $required_secrets; do
                     if [ -f "/mnt/secrets-store/$secret" ]; then
-                      echo "✓ $secret found"
-                      len=$(wc -c < "/mnt/secrets-store/$secret")
-                      echo "  Length: $len characters"
+                      secret_length=$(wc -c < "/mnt/secrets-store/$secret")
+                      echo "✓ $secret found (${secret_length} chars)"
+                      if [ $secret_length -lt 8 ]; then
+                        echo "WARNING: $secret seems too short"
+                      fi
                     else
-                      echo "✗ $secret missing"
+                      echo "✗ $secret MISSING"
                       exit 1
                     fi
                   done
-                  echo "All secrets validated!"
+                  echo "All secrets validated successfully!"
               volumeMounts:
               - name: secrets-store
                 mountPath: "/mnt/secrets-store"
                 readOnly: true
-                
+
+            # Add the secrets volume
             volumes:
             - name: secrets-store
               csi:
@@ -89,13 +101,14 @@ spec:
                 readOnly: true
                 volumeAttributes:
                   secretProviderClass: "nifi-secrets"
-                  
+
+            # Add volume mount for main container
             volumeMounts:
             - name: secrets-store
               mountPath: "/mnt/secrets-store"
               readOnly: true
-              
-            # Environment variables from Key Vault
+
+            # CRITICAL: Environment variables from secrets
             env:
             - name: NIFI_SENSITIVE_PROPS_KEY
               valueFrom:
@@ -119,63 +132,50 @@ spec:
                 secretKeyRef:
                   name: nifi-secrets
                   key: truststore-password
-            # Production JVM settings
-            - name: NIFI_JVM_HEAP_INIT
-              value: "2g"
-            - name: NIFI_JVM_HEAP_MAX
-              value: "2g"
 
-        # Production persistence
-        persistence:
-          enabled: true
-          size: 100Gi
-          accessModes: [ReadWriteOnce]
-          storageClass: "managed-csi"
-
-        # Production resources
-        resources:
-          requests:
-            cpu: 1000m
-            memory: 3Gi
-          limits:
-            cpu: 2000m
-            memory: 4Gi
-
-        jvmMemory: 2g
-
-        # Enable Zookeeper for clustering
+        # Keep Zookeeper for future clustering
         zookeeper:
           enabled: true
           replicaCount: 3
           persistence:
             enabled: true
             size: 10Gi
-          resources:
-            requests:
-              cpu: 250m
-              memory: 512Mi
-            limits:
-              cpu: 500m
-              memory: 1Gi
 
+        # Resources
+        resources:
+          requests:
+            cpu: 500m
+            memory: 2Gi
+          limits:
+            cpu: 1500m
+            memory: 3Gi
+
+        jvmMemory: 2g
+
+        # Service
         service:
           type: ClusterIP
           httpsPort: 8443
 
-        # Production health checks
+        # Persistence
+        persistence:
+          enabled: true
+          size: 50Gi
+
+        # Probes with longer timeouts for secret loading
         startupProbe:
           httpGet:
-            path: /nifi-api/system-diagnostics
+            path: /nifi
             port: 8443
             scheme: HTTPS
-          initialDelaySeconds: 180
+          initialDelaySeconds: 120
           periodSeconds: 15
           timeoutSeconds: 10
-          failureThreshold: 20
+          failureThreshold: 30
 
         readinessProbe:
           httpGet:
-            path: /nifi-api/system-diagnostics
+            path: /nifi
             port: 8443
             scheme: HTTPS
           initialDelaySeconds: 60
@@ -185,56 +185,24 @@ spec:
 
         livenessProbe:
           httpGet:
-            path: /nifi-api/system-diagnostics
+            path: /nifi
             port: 8443
             scheme: HTTPS
-          initialDelaySeconds: 300
+          initialDelaySeconds: 180
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 3
-
-        # Pod anti-affinity for HA
-        affinity:
-          podAntiAffinity:
-            preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchExpressions:
-                  - key: app
-                    operator: In
-                    values:
-                    - nifi
-                topologyKey: kubernetes.io/hostname
 
         # Security context
         securityContext:
           runAsUser: 1000
           runAsGroup: 1000
           fsGroup: 1000
-          runAsNonRoot: true
-
-        # Ingress for external access
-        ingress:
-          enabled: true
-          className: "nginx"
-          annotations:
-            nginx.ingress.kubernetes.io/ssl-redirect: "true"
-            nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-            nginx.ingress.kubernetes.io/proxy-body-size: "100m"
-          hosts:
-            - host: nifi-prod.data-platform.local
-              paths:
-                - path: /
-                  pathType: Prefix
-          tls:
-            - secretName: nifi-prod-tls
-              hosts:
-                - nifi-prod.data-platform.local
 
   destination:
     server: https://kubernetes.default.svc
     namespace: nifi-prod
+  
   syncPolicy:
     automated:
       prune: true
