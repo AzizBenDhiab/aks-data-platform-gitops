@@ -10,23 +10,11 @@ metadata:
 spec:
   project: default
   sources:
-  # Manifests for SecretProviderClass and ServiceAccount
-  - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
-    targetRevision: HEAD
-    path: manifests/nifi
-  # Helm chart
   - repoURL: https://cetic.github.io/helm-charts
     targetRevision: "1.2.1"
     chart: nifi
     helm:
       values: |
-        # Use workload identity service account
-        sts:
-          serviceAccount:
-            create: false
-            name: nifi-workload-identity
-        
-        # PRODUCTION CONFIGURATION
         replicaCount: 1
 
         image:
@@ -34,126 +22,61 @@ spec:
           tag: "1.23.2"
           pullPolicy: IfNotPresent
 
-        # Disable SSL for initial deployment, then enable after secrets are working
-        properties:
-          sensitiveKey: ""  # Will be set via environment variable
-          algorithm: NIFI_PBKDF2_AES_GCM_256
-          externalSecure: false
-          httpsPort: 8443
-          httpPort: 8080  # Add HTTP port for fallback
-          webProxyHost: "nifi-prod.data-platform.local"
-          isNode: false
-          clusterPort: 6007
-          # Add these properties to help with startup
-          needClientAuth: false
-          provenanceStorage: 10 GB
-
-        # Temporarily disable SSL until secrets are working
+        # Simple single user authentication - NO SECRETS FOR NOW
         auth:
-          admin: "CN=admin,OU=NIFI"
-          SSL:
-            enabled: false  # Disable SSL initially
-            keystorePasswd: ""
-            truststorePasswd: ""
           singleUser:
             username: admin
-            password: ""  # Will be set via environment variable
+            password: "NiFiAdmin123!"  # Strong password, properly quoted
 
-        # Add workload identity labels and secret volumes
+        # Properties configuration with valid values
+        properties:
+          algorithm: NIFI_PBKDF2_AES_GCM_256
+          sensitiveKey: "NiFiSensitiveKey123456789"  # Must be at least 12 chars
+          webProxyHost: "nifi-prod.data-platform.local"
+
+        # Simple service account - using default for now
         sts:
-          pod:
-            labels:
-              azure.workload.identity/use: "true"
-            volumes:
-            - name: secrets-store
-              csi:
-                driver: secrets-store.csi.k8s.io
-                readOnly: true
-                volumeAttributes:
-                  secretProviderClass: "nifi-secrets"
-            volumeMounts:
-            - name: secrets-store
-              mountPath: "/mnt/secrets-store"
-              readOnly: true
-            env:
-            - name: NIFI_SENSITIVE_PROPS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: nifi-secrets
-                  key: sensitive-key
-                  optional: true  # Make optional to prevent startup failure
-            - name: KEYSTORE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: nifi-secrets
-                  key: keystore-password
-                  optional: true
-            - name: TRUSTSTORE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: nifi-secrets
-                  key: truststore-password
-                  optional: true
-            - name: SINGLE_USER_CREDENTIALS_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: nifi-secrets
-                  key: admin-password
-                  optional: true
-            # Add fallback values
-            - name: NIFI_WEB_HTTP_PORT
-              value: "8080"
-            - name: NIFI_WEB_HTTPS_PORT
-              value: "8443"
+          serviceAccount:
+            create: true
+            name: nifi-prod
 
-        # PERSISTENCE CONFIGURATION
         persistence:
           enabled: true
-          accessModes: [ReadWriteOnce]
-          subPath:
-            enabled: true
-            name: data
           size: 50Gi
+          accessModes: [ReadWriteOnce]
 
-        # PRODUCTION RESOURCES - Reduced for initial testing
+        # Reasonable resource limits
         resources:
+          requests:
+            cpu: 500m
+            memory: 2Gi
           limits:
             cpu: 2000m
             memory: 4Gi
-          requests:
-            cpu: 1000m
-            memory: 2Gi
 
         jvmMemory: 2g
 
         service:
           type: ClusterIP
-          httpPort: 8080   # Add HTTP service
           httpsPort: 8443
 
-        securityContext:
-          runAsUser: 1000
-          fsGroup: 1000
-
-        ingress:
-          enabled: false
-
-        # Add startup probe to give more time for initialization
+        # Probes with reasonable timeouts
         startupProbe:
           httpGet:
             path: /nifi
-            port: 8080
-          initialDelaySeconds: 60
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 30
+            port: 8443
+            scheme: HTTPS
+          initialDelaySeconds: 120
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 20
 
-        # Add readiness and liveness probes
         readinessProbe:
           httpGet:
             path: /nifi
-            port: 8080
-          initialDelaySeconds: 30
+            port: 8443
+            scheme: HTTPS
+          initialDelaySeconds: 60
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
@@ -161,11 +84,23 @@ spec:
         livenessProbe:
           httpGet:
             path: /nifi
-            port: 8080
-          initialDelaySeconds: 120
+            port: 8443
+            scheme: HTTPS
+          initialDelaySeconds: 180
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 3
+
+        # Disable Zookeeper clustering for simplicity
+        zookeeper:
+          enabled: false
+          
+        # Single node configuration
+        properties:
+          algorithm: NIFI_PBKDF2_AES_GCM_256
+          sensitiveKey: "NiFiSensitiveKey123456789"
+          webProxyHost: "nifi-prod.data-platform.local"
+          isNode: false  # Single node, not clustered
 
   destination:
     server: https://kubernetes.default.svc
@@ -174,14 +109,11 @@ spec:
     automated:
       prune: true
       selfHeal: true
-      allowEmpty: false
     syncOptions:
       - CreateNamespace=true
-      - PrunePropagationPolicy=foreground
     retry:
-      limit: 5
+      limit: 3
       backoff:
-        duration: 15s
+        duration: 5s
         factor: 2
-        maxDuration: 15m
-  revisionHistoryLimit: 3
+        maxDuration: 5m
