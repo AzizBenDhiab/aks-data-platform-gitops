@@ -10,70 +10,172 @@ metadata:
 spec:
   project: default
   sources:
+  # Manifests for SecretProviderClass and ServiceAccount
+  - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
+    targetRevision: HEAD
+    path: manifests/nifi
+  # Helm chart
   - repoURL: https://cetic.github.io/helm-charts
     targetRevision: "1.2.1"
     chart: nifi
     helm:
       values: |
-        replicaCount: 1
+        # Production cluster configuration
+        replicaCount: 3
 
         image:
           repository: apache/nifi
           tag: "1.23.2"
           pullPolicy: IfNotPresent
 
-        # Simple single user authentication - NO SECRETS FOR NOW
+        # Authentication with Key Vault secrets
         auth:
           singleUser:
             username: admin
-            password: "NiFiAdmin123!"  # Strong password, properly quoted
+            password: ""  # Will be set by environment variable
 
-        # Properties configuration with valid values
+        # Properties from Key Vault
         properties:
+          sensitiveKey: ""  # Will be set by environment variable
           algorithm: NIFI_PBKDF2_AES_GCM_256
-          sensitiveKey: "NiFiSensitiveKey123456789"  # Must be at least 12 chars
           webProxyHost: "nifi-prod.data-platform.local"
+          isNode: true
+          clusterPort: 6007
+          clusterSecure: true
+          needClientAuth: false
 
-        # Simple service account - using default for now
+        # Use workload identity service account
         sts:
           serviceAccount:
-            create: true
-            name: nifi-prod
+            create: false
+            name: nifi-workload-identity
+          pod:
+            labels:
+              azure.workload.identity/use: "true"
+            # Init container to validate secrets
+            initContainers:
+            - name: secret-validator
+              image: busybox:1.35
+              command: ['sh', '-c']
+              args:
+                - |
+                  echo "=== Secret Validation ==="
+                  if [ ! -d /mnt/secrets-store ]; then
+                    echo "ERROR: Secrets store not mounted"
+                    exit 1
+                  fi
+                  
+                  # Check each secret
+                  for secret in admin-password sensitive-key keystore-password truststore-password; do
+                    if [ -f "/mnt/secrets-store/$secret" ]; then
+                      echo "✓ $secret found"
+                      len=$(wc -c < "/mnt/secrets-store/$secret")
+                      echo "  Length: $len characters"
+                    else
+                      echo "✗ $secret missing"
+                      exit 1
+                    fi
+                  done
+                  echo "All secrets validated!"
+              volumeMounts:
+              - name: secrets-store
+                mountPath: "/mnt/secrets-store"
+                readOnly: true
+                
+            volumes:
+            - name: secrets-store
+              csi:
+                driver: secrets-store.csi.k8s.io
+                readOnly: true
+                volumeAttributes:
+                  secretProviderClass: "nifi-secrets"
+                  
+            volumeMounts:
+            - name: secrets-store
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
+              
+            # Environment variables from Key Vault
+            env:
+            - name: NIFI_SENSITIVE_PROPS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nifi-secrets
+                  key: sensitive-key
+            - name: SINGLE_USER_CREDENTIALS_USERNAME
+              value: "admin"
+            - name: SINGLE_USER_CREDENTIALS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nifi-secrets
+                  key: admin-password
+            - name: KEYSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nifi-secrets
+                  key: keystore-password
+            - name: TRUSTSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nifi-secrets
+                  key: truststore-password
+            # Production JVM settings
+            - name: NIFI_JVM_HEAP_INIT
+              value: "2g"
+            - name: NIFI_JVM_HEAP_MAX
+              value: "2g"
 
+        # Production persistence
         persistence:
           enabled: true
-          size: 50Gi
+          size: 100Gi
           accessModes: [ReadWriteOnce]
+          storageClass: "managed-csi"
 
-        # Reasonable resource limits
+        # Production resources
         resources:
           requests:
-            cpu: 500m
-            memory: 2Gi
+            cpu: 1000m
+            memory: 3Gi
           limits:
             cpu: 2000m
             memory: 4Gi
 
         jvmMemory: 2g
 
+        # Enable Zookeeper for clustering
+        zookeeper:
+          enabled: true
+          replicaCount: 3
+          persistence:
+            enabled: true
+            size: 10Gi
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+
         service:
           type: ClusterIP
           httpsPort: 8443
 
-        # Probes with reasonable timeouts
+        # Production health checks
         startupProbe:
           httpGet:
-            path: /nifi
+            path: /nifi-api/system-diagnostics
             port: 8443
             scheme: HTTPS
-          initialDelaySeconds: 120
+          initialDelaySeconds: 180
           periodSeconds: 15
           timeoutSeconds: 10
           failureThreshold: 20
 
         readinessProbe:
           httpGet:
-            path: /nifi
+            path: /nifi-api/system-diagnostics
             port: 8443
             scheme: HTTPS
           initialDelaySeconds: 60
@@ -83,24 +185,52 @@ spec:
 
         livenessProbe:
           httpGet:
-            path: /nifi
+            path: /nifi-api/system-diagnostics
             port: 8443
             scheme: HTTPS
-          initialDelaySeconds: 180
+          initialDelaySeconds: 300
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 3
 
-        # Disable Zookeeper clustering for simplicity
-        zookeeper:
-          enabled: false
-          
-        # Single node configuration
-        properties:
-          algorithm: NIFI_PBKDF2_AES_GCM_256
-          sensitiveKey: "NiFiSensitiveKey123456789"
-          webProxyHost: "nifi-prod.data-platform.local"
-          isNode: false  # Single node, not clustered
+        # Pod anti-affinity for HA
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                    - nifi
+                topologyKey: kubernetes.io/hostname
+
+        # Security context
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          fsGroup: 1000
+          runAsNonRoot: true
+
+        # Ingress for external access
+        ingress:
+          enabled: true
+          className: "nginx"
+          annotations:
+            nginx.ingress.kubernetes.io/ssl-redirect: "true"
+            nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+            nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+          hosts:
+            - host: nifi-prod.data-platform.local
+              paths:
+                - path: /
+                  pathType: Prefix
+          tls:
+            - secretName: nifi-prod-tls
+              hosts:
+                - nifi-prod.data-platform.local
 
   destination:
     server: https://kubernetes.default.svc
@@ -112,8 +242,8 @@ spec:
     syncOptions:
       - CreateNamespace=true
     retry:
-      limit: 3
+      limit: 5
       backoff:
-        duration: 5s
+        duration: 15s
         factor: 2
-        maxDuration: 5m
+        maxDuration: 15m
