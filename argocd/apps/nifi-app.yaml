@@ -14,7 +14,7 @@ spec:
   - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
     targetRevision: HEAD
     path: manifests/nifi
-  # Helm chart with CORRECTED configuration
+  # Helm chart with dynamic authentication
   - repoURL: https://cetic.github.io/helm-charts
     targetRevision: "1.2.1"
     chart: nifi
@@ -27,24 +27,33 @@ spec:
           tag: "1.23.2"
           pullPolicy: IfNotPresent
 
+        # BYPASS hardcoded authentication by setting empty values
+        auth:
+          singleUser:
+            username: ""  # Empty to bypass chart's hardcoded logic
+            password: ""  # Empty to bypass chart's hardcoded logic
+
         # Properties configuration
         properties:
           sensitiveKey: "temporaryKey123456789"
           algorithm: "NIFI_PBKDF2_AES_GCM_256"
           webProxyHost: "nifi-prod.data-platform.local"
           isNode: false
+          httpsPort: 8443
+          httpPort: null   # Disable HTTP when using HTTPS
+          webHttpsHost: "0.0.0.0"
+          needClientAuth: false
 
-        # FIXED: Correct service account structure for StatefulSet
+        # Service account configuration
         sts:
           serviceAccount:
             create: false
             name: nifi-workload-identity
-          # FIXED: Pod annotations moved to correct location
           pod:
             annotations:
               azure.workload.identity/use: "true"
 
-        # FIXED: Environment variables structure
+        # Environment variables (kept for compatibility)
         env:
           - name: NIFI_SENSITIVE_PROPS_KEY
             valueFrom:
@@ -69,11 +78,85 @@ spec:
                 name: nifi-secrets
                 key: truststore-password
 
-        # REMOVED: Invalid 'secrets' configuration
-        # The Helm chart doesn't have a 'secrets' section like this
-        # Secrets are handled via extraVolumes and env variables
+        # DYNAMIC AUTHENTICATION: Init container to configure authentication from Key Vault
+        initContainers:
+          - name: nifi-auth-config
+            image: apache/nifi:1.23.2
+            command: ["/bin/bash"]
+            args:
+              - -c
+              - |
+                echo "Setting up NiFi authentication from Azure Key Vault..."
+                
+                # Wait for secrets to be available
+                while [ ! -f /mnt/secrets-store/nifi-admin-password ]; do
+                  echo "Waiting for Key Vault secrets to be mounted..."
+                  sleep 5
+                done
+                
+                # Read credentials from mounted secrets
+                USERNAME="admin"
+                PASSWORD=$(cat /mnt/secrets-store/nifi-admin-password)
+                
+                echo "Configuring NiFi with username: $USERNAME"
+                
+                # Create proper login-identity-providers.xml
+                mkdir -p /shared-config
+                cat > /shared-config/login-identity-providers.xml << EOF
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <loginIdentityProviders>
+                    <provider>
+                        <identifier>single-user-provider</identifier>
+                        <class>org.apache.nifi.authentication.single.user.SingleUserLoginIdentityProvider</class>
+                        <property name="Username">$USERNAME</property>
+                        <property name="Password">$PASSWORD</property>
+                    </provider>
+                </loginIdentityProviders>
+                EOF
+                
+                # Create authorizers.xml with the admin user
+                cat > /shared-config/authorizers.xml << EOF
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <authorizers>
+                    <userGroupProvider>
+                        <identifier>file-user-group-provider</identifier>
+                        <class>org.apache.nifi.authorization.FileUserGroupProvider</class>
+                        <property name="Users File">./conf/users.xml</property>
+                        <property name="Legacy Authorized Users File"></property>
+                        <property name="Initial User Identity 1">$USERNAME</property>
+                    </userGroupProvider>
+                    <accessPolicyProvider>
+                        <identifier>file-access-policy-provider</identifier>
+                        <class>org.apache.nifi.authorization.FileAccessPolicyProvider</class>
+                        <property name="User Group Provider">file-user-group-provider</property>
+                        <property name="Authorizations File">./conf/authorizations.xml</property>
+                        <property name="Initial Admin Identity">$USERNAME</property>
+                        <property name="Legacy Authorized Users File"></property>
+                        <property name="Node Identity 1"></property>
+                    </accessPolicyProvider>
+                    <authorizer>
+                        <identifier>managed-authorizer</identifier>
+                        <class>org.apache.nifi.authorization.StandardManagedAuthorizer</class>
+                        <property name="Access Policy Provider">file-access-policy-provider</property>
+                    </authorizer>
+                </authorizers>
+                EOF
+                
+                echo "Authentication configuration completed successfully"
+                echo "Username: $USERNAME"
+                echo "Configuration files created in /shared-config"
+                ls -la /shared-config/
+            volumeMounts:
+              - name: secrets-store
+                mountPath: "/mnt/secrets-store"
+                readOnly: true
+              - name: shared-config
+                mountPath: /shared-config
+            securityContext:
+              runAsUser: 1000
+              runAsGroup: 1000
 
-        # FIXED: Extra volumes for CSI secret store
+        # Extra volumes for CSI secret store and shared configuration
         extraVolumes:
           - name: secrets-store
             csi:
@@ -81,12 +164,29 @@ spec:
               readOnly: true
               volumeAttributes:
                 secretProviderClass: "nifi-secrets"
+          - name: shared-config
+            emptyDir: {}
 
-        # FIXED: Extra volume mounts
+        # Extra volume mounts including shared configuration
         extraVolumeMounts:
           - name: secrets-store
             mountPath: "/mnt/secrets-store"
             readOnly: true
+          - name: shared-config
+            mountPath: /opt/nifi/nifi-current/conf-override
+
+        # Post-start hook to copy configuration files
+        postStart: |
+          # Copy the dynamically generated configuration files
+          if [ -f /opt/nifi/nifi-current/conf-override/login-identity-providers.xml ]; then
+            cp /opt/nifi/nifi-current/conf-override/login-identity-providers.xml /opt/nifi/nifi-current/conf/
+            echo "Copied login-identity-providers.xml from init container"
+          fi
+          
+          if [ -f /opt/nifi/nifi-current/conf-override/authorizers.xml ]; then
+            cp /opt/nifi/nifi-current/conf-override/authorizers.xml /opt/nifi/nifi-current/conf/
+            echo "Copied authorizers.xml from init container"
+          fi
 
         # Resources configuration
         resources:
@@ -97,58 +197,54 @@ spec:
             cpu: 1500m
             memory: 3Gi
 
-        # FIXED: JVM memory configuration (correct parameter name)
+        # JVM memory configuration
         jvmMemory: 2g
 
         # Persistence configuration
         persistence:
           enabled: true
-          # FIXED: Use subPath for single volume instead of separate volumes
           subPath:
             enabled: true
             name: nifi-data
             size: 50Gi
 
-        # FIXED: Service configuration
+        # Service configuration
         service:
           type: ClusterIP
-          # REMOVED: httpsPort - use properties.httpsPort instead
+          httpPort: 8080
+          httpsPort: 8443
           annotations: {}
-
-        # FIXED: Properties configuration for HTTPS
-        properties:
-          sensitiveKey: "temporaryKey123456789"
-          algorithm: "NIFI_PBKDF2_AES_GCM_256"
-          webProxyHost: "nifi-prod.data-platform.local"
-          isNode: false
-          httpsPort: 8443  # MOVED: HTTPS port goes in properties
-          httpPort: null   # Disable HTTP when using HTTPS
 
         # Zookeeper configuration
         zookeeper:
           enabled: true
           replicaCount: 3
 
-        # FIXED: Security context
+        # Security context
         securityContext:
           runAsUser: 1000
           runAsGroup: 1000
           fsGroup: 1000
 
-        # FIXED: Probes configuration (correct parameter names)
+        # Probes configuration
         startupProbe:
           enabled: true
           failureThreshold: 30
           periodSeconds: 15
-          # REMOVED: initialDelaySeconds (not available for startupProbe in this chart)
 
         readinessProbe:
-          # Note: Chart uses livenessProbe and readinessProbe differently
-          # Check chart values.yaml for exact parameters
+          enabled: true
+          initialDelaySeconds: 120  # Give more time for configuration setup
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 5
 
         livenessProbe:
-          # Note: Chart may have different probe configuration
-          # Check chart values.yaml for exact parameters
+          enabled: true
+          initialDelaySeconds: 240  # Give more time for initial setup
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
 
   destination:
     server: https://kubernetes.default.svc
