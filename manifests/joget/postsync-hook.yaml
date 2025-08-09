@@ -1,0 +1,139 @@
+# ArgoCD PostSync Hook for Joget Database Clean Setup
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: joget-db-setup
+  namespace: joget
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-weight: "1"
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      volumes:
+      - name: secrets-store
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: "joget-secrets"
+      - name: sql-scripts
+        configMap:
+          name: joget-sql-scripts
+      containers:
+      - name: db-setup
+        image: postgres:13-alpine
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🚀 Starting Joget database setup..."
+          
+          # Wait for PostgreSQL to be ready
+          echo "⏳ Waiting for PostgreSQL to be ready..."
+          until pg_isready -h postgresql -p 5432 -U joget_user; do
+            echo "PostgreSQL is not ready yet, waiting..."
+            sleep 5
+          done
+          echo "✅ PostgreSQL is ready"
+          
+          # Wait for Joget application to start and create initial tables
+          echo "⏳ Waiting for Joget to initialize tables..."
+          for i in $(seq 1 60); do
+            if psql -h postgresql -U joget_user -d joget -c "SELECT 1;" 2>/dev/null; then
+              echo "✅ Database connection established"
+              break
+            fi
+            echo "🔄 Attempt $i/60: Database not ready yet, waiting 10s..."
+            sleep 10
+          done
+          
+          # Give Joget more time to create its tables
+          echo "⏳ Giving Joget time to create initial schema..."
+          sleep 30
+          
+          echo "🗑️ Cleaning existing Joget database content..."
+          
+          # Get all table names and delete data (preserve schema)
+          psql -h postgresql -U joget_user -d joget << 'EOF'
+          -- Disable foreign key checks temporarily
+          SET session_replication_role = replica;
+          
+          -- Get all tables and truncate them
+          DO $$ 
+          DECLARE 
+              r RECORD;
+          BEGIN
+              -- Loop through all tables in public schema
+              FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') 
+              LOOP
+                  EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE';
+                  RAISE NOTICE 'Truncated table: %', r.tablename;
+              END LOOP;
+          END $$;
+          
+          -- Re-enable foreign key checks
+          SET session_replication_role = DEFAULT;
+          
+          \echo '✅ Database cleanup completed'
+          EOF
+          
+          echo "📋 Running custom SQL script..."
+          
+          # Execute the custom SQL script
+          if [ -f /scripts/jwdb-postgres.sql ]; then
+            psql -h postgresql -U joget_user -d joget -f /scripts/jwdb-postgres.sql
+            echo "✅ Custom SQL script executed successfully"
+          else
+            echo "❌ Script /scripts/jwdb-postgres.sql not found!"
+            ls -la /scripts/
+            exit 1
+          fi
+          
+          echo "🔍 Verifying setup..."
+          psql -h postgresql -U joget_user -d joget -c "SELECT COUNT(*) as table_count FROM information_schema.tables WHERE table_schema = 'public';"
+          
+          echo "🎉 Joget database setup completed successfully!"
+        env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: joget-secrets
+              key: joget-password
+        - name: JOGET_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: joget-secrets
+              key: joget-password
+        volumeMounts:
+        - name: secrets-store
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
+        - name: sql-scripts
+          mountPath: /scripts
+      serviceAccountName: joget-workload-identity
+---
+# ConfigMap to hold your SQL script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: joget-sql-scripts
+  namespace: joget
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-weight: "0"
+data:
+  jwdb-postgres.sql: |
+    -- Put your jwdb-postgres.sql content here
+    -- This will be replaced with the actual content from your scripts/jwdb-postgres.sql file
+    
+    -- Example placeholder - replace with your actual script
+    \echo 'Loading Joget database schema and data...'
+    
+    -- Your actual SQL commands go here
+    -- CREATE TABLE statements
+    -- INSERT statements
+    -- etc.
+    
+    \echo 'Joget database setup from script completed'
