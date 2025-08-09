@@ -27,12 +27,6 @@ spec:
           tag: "1.23.2"
           pullPolicy: IfNotPresent
 
-        # FIXED: Correct authentication structure
-        auth:
-          singleUser:
-            username: admin
-            password: "temporaryPassword123!"  # Will be overridden by env vars
-
         # Properties configuration
         properties:
           sensitiveKey: "temporaryKey123456789"
