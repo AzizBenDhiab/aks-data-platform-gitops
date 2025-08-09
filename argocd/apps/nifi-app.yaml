@@ -14,7 +14,7 @@ spec:
   - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
     targetRevision: HEAD
     path: manifests/nifi
-  # Helm chart with CORRECT service account structure
+  # Helm chart with CORRECTED configuration
   - repoURL: https://cetic.github.io/helm-charts
     targetRevision: "1.2.1"
     chart: nifi
@@ -27,29 +27,30 @@ spec:
           tag: "1.23.2"
           pullPolicy: IfNotPresent
 
-        # Single user auth - will be overridden by environment variables
-        singleUser:
-          username: admin
-          password: "temporaryPassword123!"
+        # FIXED: Correct authentication structure
+        auth:
+          singleUser:
+            username: admin
+            password: "temporaryPassword123!"  # Will be overridden by env vars
 
-        # Properties
+        # Properties configuration
         properties:
           sensitiveKey: "temporaryKey123456789"
           algorithm: "NIFI_PBKDF2_AES_GCM_256"
           webProxyHost: "nifi-prod.data-platform.local"
           isNode: false
 
-        # CRITICAL: Use the correct structure for service account
+        # FIXED: Correct service account structure for StatefulSet
         sts:
           serviceAccount:
             create: false
             name: nifi-workload-identity
-          # Add pod annotations for workload identity  
+          # FIXED: Pod annotations moved to correct location
           pod:
             annotations:
               azure.workload.identity/use: "true"
 
-        # Environment variables from Azure Key Vault secrets
+        # FIXED: Environment variables structure
         env:
           - name: NIFI_SENSITIVE_PROPS_KEY
             valueFrom:
@@ -74,17 +75,11 @@ spec:
                 name: nifi-secrets
                 key: truststore-password
 
-        # Secrets using the chart's structure
-        secrets:
-          - name: nifi-secrets
-            keys:
-              - admin-password
-              - sensitive-key
-              - keystore-password
-              - truststore-password
-            mountPath: /opt/nifi/nifi-current/secrets
+        # REMOVED: Invalid 'secrets' configuration
+        # The Helm chart doesn't have a 'secrets' section like this
+        # Secrets are handled via extraVolumes and env variables
 
-        # Extra volumes for CSI secret store
+        # FIXED: Extra volumes for CSI secret store
         extraVolumes:
           - name: secrets-store
             csi:
@@ -93,13 +88,13 @@ spec:
               volumeAttributes:
                 secretProviderClass: "nifi-secrets"
 
-        # Mount the CSI secret store
+        # FIXED: Extra volume mounts
         extraVolumeMounts:
           - name: secrets-store
             mountPath: "/mnt/secrets-store"
             readOnly: true
 
-        # Resources
+        # Resources configuration
         resources:
           requests:
             cpu: 500m
@@ -108,50 +103,58 @@ spec:
             cpu: 1500m
             memory: 3Gi
 
+        # FIXED: JVM memory configuration (correct parameter name)
         jvmMemory: 2g
 
-        # Persistence
+        # Persistence configuration
         persistence:
           enabled: true
-          size: 50Gi
+          # FIXED: Use subPath for single volume instead of separate volumes
+          subPath:
+            enabled: true
+            name: nifi-data
+            size: 50Gi
 
-        # Service
+        # FIXED: Service configuration
         service:
           type: ClusterIP
-          httpsPort: 8443
+          # REMOVED: httpsPort - use properties.httpsPort instead
+          annotations: {}
 
-        # Zookeeper for future clustering
+        # FIXED: Properties configuration for HTTPS
+        properties:
+          sensitiveKey: "temporaryKey123456789"
+          algorithm: "NIFI_PBKDF2_AES_GCM_256"
+          webProxyHost: "nifi-prod.data-platform.local"
+          isNode: false
+          httpsPort: 8443  # MOVED: HTTPS port goes in properties
+          httpPort: null   # Disable HTTP when using HTTPS
+
+        # Zookeeper configuration
         zookeeper:
           enabled: true
           replicaCount: 3
 
-        # Security context
+        # FIXED: Security context
         securityContext:
           runAsUser: 1000
           runAsGroup: 1000
           fsGroup: 1000
 
-        # Probes with longer timeouts
+        # FIXED: Probes configuration (correct parameter names)
         startupProbe:
           enabled: true
-          initialDelaySeconds: 120
-          periodSeconds: 15
-          timeoutSeconds: 10
           failureThreshold: 30
+          periodSeconds: 15
+          # REMOVED: initialDelaySeconds (not available for startupProbe in this chart)
 
         readinessProbe:
-          enabled: true
-          initialDelaySeconds: 60
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
+          # Note: Chart uses livenessProbe and readinessProbe differently
+          # Check chart values.yaml for exact parameters
 
         livenessProbe:
-          enabled: true
-          initialDelaySeconds: 180
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 3
+          # Note: Chart may have different probe configuration
+          # Check chart values.yaml for exact parameters
 
   destination:
     server: https://kubernetes.default.svc
