@@ -1,4 +1,4 @@
-# PostSync Hook that downloads your SQL script from Git repository
+# Final PostSync Hook - Downloads SQL script and fixes setup/admin issues
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -7,7 +7,7 @@ metadata:
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-weight: "1"
-    # Remove for debugging: argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 spec:
   template:
     spec:
@@ -25,7 +25,7 @@ spec:
         command: ['sh', '-c']
         args:
         - |
-          echo "Starting Joget database setup with Git script download..."
+          echo "Starting Joget database setup with fixes..."
           
           # Install curl for downloading
           apk add --no-cache curl
@@ -52,45 +52,143 @@ spec:
           sleep 30  # Give Joget time to create schema
           
           echo "Cleaning existing database content..."
+          
+          # Clean existing data using DELETE (avoids permission issues)
           psql -h postgresql -U joget_user -d joget << 'EOF'
-          SET session_replication_role = replica;
-          DO $$ 
-          DECLARE 
-              r RECORD;
-          BEGIN
-              FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') 
-              LOOP
-                  EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE';
-                  RAISE NOTICE 'Truncated table: %', r.tablename;
-              END LOOP;
-          END $$;
-          SET session_replication_role = DEFAULT;
+          \echo 'Starting database cleanup...'
+          
+          -- Clean user-related tables first (handle foreign keys)
+          DELETE FROM dir_user_role;
+          DELETE FROM dir_user_group;
+          DELETE FROM dir_user_meta;
+          DELETE FROM dir_user_password_history;
+          DELETE FROM dir_user_replacement;
+          DELETE FROM dir_employment_report_to;
+          DELETE FROM dir_employment;
+          DELETE FROM dir_user;
+          DELETE FROM dir_group;
+          DELETE FROM dir_role;
+          DELETE FROM dir_grade;
+          DELETE FROM dir_organization;
+          DELETE FROM dir_department;
+          
+          -- Clean app tables
+          DELETE FROM app_form_data_audit_trail;
+          DELETE FROM app_package_activity_form;
+          DELETE FROM app_package_activity_plugin;
+          DELETE FROM app_package_participant;
+          DELETE FROM app_report_activity_instance;
+          DELETE FROM app_report_activity;
+          DELETE FROM app_report_process_instance;
+          DELETE FROM app_report_process;
+          DELETE FROM app_report_package;
+          DELETE FROM app_report_app;
+          DELETE FROM app_fd_appcenter;
+          DELETE FROM app_fd;
+          DELETE FROM app_builder;
+          DELETE FROM app_env_variable;
+          DELETE FROM app_plugin_default;
+          DELETE FROM app_resource;
+          DELETE FROM app_message;
+          DELETE FROM app_userview;
+          DELETE FROM app_datalist;
+          DELETE FROM app_form;
+          DELETE FROM app_package;
+          DELETE FROM app_app;
+          
           \echo 'Database cleanup completed'
           EOF
           
           echo "Downloading SQL script from Git repository..."
           
-          # Download your actual SQL script from the Git repository
+          # Download your actual SQL script
           curl -L -o /tmp/jwdb-postgres.sql \
             "https://raw.githubusercontent.com/AzizBenDhiab/aks-data-platform-gitops/main/argocd/scripts/jwdb-postgres.sql"
           
           if [ ! -f /tmp/jwdb-postgres.sql ]; then
-            echo "❌ Failed to download SQL script!"
+            echo "Failed to download SQL script!"
             exit 1
           fi
           
           echo "Script downloaded. Size: $(wc -l < /tmp/jwdb-postgres.sql) lines"
-          echo "First 10 lines of script:"
-          head -10 /tmp/jwdb-postgres.sql
           
           echo "Running SQL script..."
+          # Execute the script
           psql -h postgresql -U joget_user -d joget -f /tmp/jwdb-postgres.sql
           
-          echo "Verifying setup..."
-          psql -h postgresql -U joget_user -d joget -c "SELECT COUNT(*) as table_count FROM information_schema.tables WHERE table_schema = 'public';"
-          psql -h postgresql -U joget_user -d joget -c "SELECT COUNT(*) as user_count FROM dir_user;"
+          echo "Applying post-installation fixes..."
+          # Critical fixes for setup and admin user
+          psql -h postgresql -U joget_user -d joget << 'EOF'
+          \echo 'Applying essential fixes...'
           
-          echo "Joget database setup completed successfully!"
+          -- Fix 1: Ensure admin user is active (critical for login)
+          UPDATE dir_user SET active = 1 WHERE username = 'admin';
+          
+          -- Fix 2: Ensure admin user has proper password hash
+          UPDATE dir_user SET password = '21232f297a57a5a743894a0e4a801fc3' 
+          WHERE username = 'admin' AND (password IS NULL OR password = '');
+          
+          -- Fix 3: Mark setup as completed in wf_setup table (prevents setup redirect)
+          INSERT INTO wf_setup (id, property, value, ordering)
+          VALUES ('setupCompleted', 'setupCompleted', 'true', 0)
+          ON CONFLICT (id) DO UPDATE SET value = 'true';
+          
+          -- Fix 4: Create app_info table if missing and mark setup complete
+          CREATE TABLE IF NOT EXISTS app_info (
+              id VARCHAR(255) PRIMARY KEY,
+              value TEXT
+          );
+          
+          INSERT INTO app_info (id, value)
+          VALUES ('setupCompleted', 'true')
+          ON CONFLICT (id) DO UPDATE SET value = 'true';
+          
+          -- Fix 5: Ensure admin has admin group membership
+          INSERT INTO dir_group (id, name, description)
+          VALUES ('adminGroup', 'Administrators', 'System Administrators')
+          ON CONFLICT (id) DO NOTHING;
+          
+          INSERT INTO dir_user_group (groupId, userId)
+          VALUES ('adminGroup', 'admin')
+          ON CONFLICT DO NOTHING;
+          
+          -- Fix 6: Ensure admin has admin role
+          INSERT INTO dir_role (id, name, description)
+          VALUES ('adminRole', 'Administrator', 'System Administrator Role')
+          ON CONFLICT (id) DO NOTHING;
+          
+          INSERT INTO dir_user_role (roleId, userId)
+          VALUES ('adminRole', 'admin')
+          ON CONFLICT DO NOTHING;
+          
+          \echo 'Essential fixes completed'
+          EOF
+          
+          echo "Verifying final setup..."
+          psql -h postgresql -U joget_user -d joget << 'EOF'
+          \echo 'Final verification:'
+          
+          -- Check table count
+          SELECT COUNT(*) as total_tables FROM information_schema.tables WHERE table_schema = 'public';
+          
+          -- Check admin user status
+          SELECT username, active, 
+                 CASE WHEN password IS NOT NULL THEN 'SET' ELSE 'NULL' END as password_status
+          FROM dir_user WHERE username = 'admin';
+          
+          -- Check setup completion status
+          SELECT 'Setup Status:' as info;
+          SELECT property, value FROM wf_setup WHERE property = 'setupCompleted';
+          SELECT id, value FROM app_info WHERE id = 'setupCompleted';
+          
+          -- Check admin group/role membership
+          SELECT 'Admin Groups:' as info, COUNT(*) as count FROM dir_user_group WHERE userId = 'admin';
+          SELECT 'Admin Roles:' as info, COUNT(*) as count FROM dir_user_role WHERE userId = 'admin';
+          
+          \echo 'Joget database setup and fixes completed successfully!'
+          EOF
+          
+          echo "All setup completed! Joget should now be accessible with admin/admin"
         env:
         - name: PGPASSWORD
           valueFrom:
