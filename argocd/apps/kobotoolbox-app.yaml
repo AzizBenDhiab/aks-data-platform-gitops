@@ -19,180 +19,145 @@ spec:
       targetRevision: main
       path: charts/kobotoolbox
       helm:
-        parameters:
-          # CRITICAL: Override the hardcoded global.storageClass
-          - name: global.storageClass
-            value: "managed-csi"
+        values: |
+          # Global configuration
+          global:
+            storageClass: "managed-csi"
+            redis:
+              existingSecret: "kobotoolbox-secrets"
+              existingSecretPasswordKey: "redis-password"
 
-          # Redis configuration using existing secret
-          - name: global.redis.existingSecret
-            value: "kobotoolbox-secrets"
-          - name: global.redis.existingSecretPasswordKey
-            value: "redis-password"
-          - name: rediscache.enabled
-            value: "true"
-          - name: rediscache.usePassword
-            value: "true"
-          - name: rediscache.architecture
-            value: "standalone"
-          - name: redismain.enabled
-            value: "true"
-          - name: redismain.usePassword
-            value: "true"
-          - name: redismain.architecture
-            value: "standalone"
+          # Redis configuration
+          rediscache:
+            enabled: true
+            usePassword: true
+            architecture: "standalone"
+          
+          redismain:
+            enabled: true
+            usePassword: true
+            architecture: "standalone"
 
           # General configuration
-          - name: general.externalDomain
-            value: "kobotoolbox.local"
-          - name: general.externalScheme
-            value: "http"
-          - name: general.externalPort
-            value: ""
-          - name: general.replicas
-            value: "1"
-          - name: general.debug
-            value: "false"
-          - name: general.serviceType
-            value: "ClusterIP"
-          - name: general.forceInternal
-            value: "false"
-
-          # Super user configuration using existing secret
-          - name: general.superUser.username
-            value: "admin"
-          - name: general.superUser.existingSecret
-            value: "kobotoolbox-secrets"
-          - name: general.superUser.existingSecretPasswordKey
-            value: "admin-password"
-
-          # Support email
-          - name: general.supportEmail
-            value: "support@kobotoolbox.local"
-
-          # Django secret - use existing secret reference
-          - name: general.djangoSecret.existingSecret
-            value: "kobotoolbox-secrets"
-          - name: general.djangoSecret.existingSecretKey
-            value: "django-secret"
-
-          # Media storage configuration
-          - name: general.mediaStorage.enabled
-            value: "false"
-          - name: general.mediaStorage.size
-            value: "10Gi"
-          - name: general.mediaStorage.storageClass
-            value: "managed-csi"
-          - name: general.mediaStorage.accessMode
-            value: "ReadWriteOnce"
-
-          # Sentry configuration
-          - name: general.sentry.environment
-            value: "production"
+          general:
+            externalDomain: "kobotoolbox.local"
+            externalScheme: "http"
+            externalPort: ""
+            replicas: 1
+            debug: false
+            serviceType: "ClusterIP"
+            forceInternal: false
+            supportEmail: "support@kobotoolbox.local"
+            
+            # Super user configuration using existing secret
+            superUser:
+              username: "admin"
+              existingSecret: "kobotoolbox-secrets"
+              existingSecretPasswordKey: "admin-password"
+            
+            # Django secret - use existing secret reference
+            djangoSecret:
+              existingSecret: "kobotoolbox-secrets"
+              existingSecretKey: "django-secret"
+            
+            # Media storage configuration
+            mediaStorage:
+              enabled: false
+              size: "10Gi"
+              storageClass: "managed-csi"
+              accessMode: "ReadWriteOnce"
+            
+            # Sentry configuration
+            sentry:
+              environment: "production"
 
           # PostgreSQL configuration using existing secret
-          - name: postgresql.enabled
-            value: "true"
-          - name: postgresql.kobocatDatabase
-            value: "kobocat"
-          - name: postgresql.kpiDatabase
-            value: "koboform"
-          - name: postgresql.auth.existingSecret
-            value: "kobotoolbox-secrets"
-          - name: postgresql.auth.secretKeys.adminPasswordKey
-            value: "postgres-admin-password"
-          - name: postgresql.auth.secretKeys.userPasswordKey
-            value: "postgres-user-password"
-          - name: postgresql.auth.username
-            value: "postgres"
+          postgresql:
+            enabled: true
+            kobocatDatabase: "kobocat"
+            kpiDatabase: "koboform"
+            auth:
+              existingSecret: "kobotoolbox-secrets"
+              secretKeys:
+                adminPasswordKey: "postgres-admin-password"
+                userPasswordKey: "postgres-user-password"
+              username: "postgres"
 
           # MongoDB configuration using existing secret
-          - name: mongodb.enabled
-            value: "true"
-          - name: mongodb.auth.existingSecret
-            value: "kobotoolbox-secrets"
-          - name: mongodb.auth.secretKeys.rootPasswordKey
-            value: "mongo-root-password"
-          - name: mongodb.auth.secretKeys.userPasswordKey
-            value: "mongo-user-password"
-          - name: mongodb.auth.username
-            value: "kobo"
-          - name: mongodb.auth.database
-            value: "formhub"
+          mongodb:
+            enabled: true
+            auth:
+              existingSecret: "kobotoolbox-secrets"
+              secretKeys:
+                rootPasswordKey: "mongo-root-password"
+                userPasswordKey: "mongo-user-password"
+              username: "kobo"
+              database: "formhub"
 
-          # Application image tags (use chart defaults or override)
-          - name: kpi.image.tag
-            value: "2.022.24d"
-          - name: kobocat.image.tag
-            value: "2.022.24a"
-          - name: enketo.image.tag
-            value: "3.0.4"
-          - name: nginx.image.tag
-            value: "1.21"
+          # Application image tags
+          kpi:
+            image:
+              tag: "2.022.24d"
+            subdomain: "kobo"
 
-          # Enketo configuration
-          - name: enketo.replicas
-            value: "1"
-          - name: enketo.subdomain
-            value: "ee"
+          kobocat:
+            image:
+              tag: "2.022.24a"
+            subdomain: "kc"
 
-          # KPI subdomain
-          - name: kpi.subdomain
-            value: "kobo"
+          enketo:
+            image:
+              tag: "3.0.4"
+            replicas: 1
+            subdomain: "ee"
 
-          # KoboCAT subdomain
-          - name: kobocat.subdomain
-            value: "kc"
+          nginx:
+            image:
+              tag: "1.21"
 
           # Ingress (disabled)
-          - name: ingress.enabled
-            value: "false"
+          ingress:
+            enabled: false
 
           # Monitoring (disabled for now)
-          - name: uwsgiExporter.enabled
-            value: "false"
-          - name: flower.enabled
-            value: "false"
+          uwsgiExporter:
+            enabled: false
+          
+          flower:
+            enabled: false
 
           # Probes (enabled)
-          - name: probes.enabled
-            value: "true"
+          probes:
+            enabled: true
 
           # Priority class
-          - name: priorityClass
-            value: ""
+          priorityClass: ""
 
           # SMTP (disabled for development)
-          - name: smtp.host
-            value: ""
-          - name: smtp.user
-            value: ""
-          - name: smtp.password
-            value: ""
-          - name: smtp.from
-            value: ""
+          smtp:
+            host: ""
+            user: ""
+            password: ""
+            from: ""
 
           # External services (disabled)
-          - name: external.google.apiKey
-            value: ""
-          - name: external.google.analyticsToken
-            value: ""
-          - name: external.ravenDSN.kobocat
-            value: ""
-          - name: external.ravenDSN.kpi
-            value: ""
-          - name: external.ravenDSN.kpiJs
-            value: ""
+          external:
+            google:
+              apiKey: ""
+              analyticsToken: ""
+            ravenDSN:
+              kobocat: ""
+              kpi: ""
+              kpiJs: ""
 
           # Service account configuration (for workload identity)
-          - name: serviceAccount.create
-            value: "false"
-          - name: serviceAccount.name
-            value: "kobotoolbox-workload-identity"
+          serviceAccount:
+            create: false
+            name: "kobotoolbox-workload-identity"
 
           # Workload identity labels
-          - name: podLabels.azure\.workload\.identity/use
-            value: "true"
+          podLabels:
+            azure.workload.identity/use: "true"
 
         valueFiles:
           - $values/values/kobotoolbox-values.yaml
