@@ -1,3 +1,4 @@
+# argocd/kobotoolbox-app.yaml - CORRECTED WITH REAL CHART STRUCTURE
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -10,158 +11,168 @@ metadata:
 spec:
   project: default
   sources:
-    # Manifests for SecretProviderClass and ServiceAccount
-    - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
-      targetRevision: HEAD
-      path: manifests/kobotoolbox
-    # Helm chart
     - repoURL: https://github.com/AzizBenDhiab/oaf-public-charts.git
       targetRevision: main
       path: charts/kobotoolbox
       helm:
-        values: |
-          # Global configuration
-          global:
-            storageClass: "managed-csi"
-            redis:
-              existingSecret: "kobotoolbox-secrets"
-              existingSecretPasswordKey: "redis-password"
+        # USING ACTUAL CHART PARAMETER NAMES
+        parameters:
+          # CRITICAL: Override the hardcoded global.storageClass
+          - name: global.storageClass
+            value: "managed-csi"
 
-          # Redis configuration
-          rediscache:
-            enabled: true
-            usePassword: true
-            architecture: "standalone"
-          
-          redismain:
-            enabled: true
-            usePassword: true
-            architecture: "standalone"
+          # Redis configuration (actual chart structure)
+          - name: global.redis.password
+            value: "redis-secure-password-2024"
+          - name: rediscache.enabled
+            value: "true"
+          - name: rediscache.usePassword
+            value: "true"
+          - name: rediscache.architecture
+            value: "standalone"
+          - name: redismain.enabled
+            value: "true"
+          - name: redismain.usePassword
+            value: "true"
+          - name: redismain.architecture
+            value: "standalone"
 
-          # General configuration
-          general:
-            externalDomain: "kobotoolbox.local"
-            externalScheme: "http"
-            externalPort: ""
-            replicas: 1
-            debug: false
-            serviceType: "ClusterIP"
-            forceInternal: false
-            supportEmail: "support@kobotoolbox.local"
-            
-            # Super user configuration using existing secret
-            superUser:
-              username: "admin"
-              existingSecret: "kobotoolbox-secrets"
-              existingSecretPasswordKey: "admin-password"
-            
-            # Django secret - use existing secret reference
-            djangoSecret:
-              existingSecret: "kobotoolbox-secrets"
-              existingSecretKey: "django-secret"
-            
-            # Media storage configuration
-            mediaStorage:
-              enabled: false
-              size: "10Gi"
-              storageClass: "managed-csi"
-              accessMode: "ReadWriteOnce"
-            
-            # Sentry configuration
-            sentry:
-              environment: "production"
+          # General configuration (actual chart structure)
+          - name: general.externalDomain
+            value: "kobotoolbox.local"
+          - name: general.externalScheme
+            value: "http"
+          - name: general.externalPort
+            value: ""
+          - name: general.replicas
+            value: "1"
+          - name: general.debug
+            value: "false"
+          - name: general.serviceType
+            value: "ClusterIP"
+          - name: general.forceInternal
+            value: "false"
 
-          # PostgreSQL configuration using existing secret
-          postgresql:
-            enabled: true
-            kobocatDatabase: "kobocat"
-            kpiDatabase: "koboform"
-            auth:
-              existingSecret: "kobotoolbox-secrets"
-              secretKeys:
-                adminPasswordKey: "postgres-admin-password"
-                userPasswordKey: "postgres-user-password"
-              username: "postgres"
+          # Super user configuration (actual chart structure)
+          - name: general.superUser.username
+            value: "admin"
+          - name: general.superUser.password
+            value: "KoboAdmin2024!"
 
-          # MongoDB configuration using existing secret
-          mongodb:
-            enabled: true
-            auth:
-              existingSecret: "kobotoolbox-secrets"
-              secretKeys:
-                rootPasswordKey: "mongo-root-password"
-                userPasswordKey: "mongo-user-password"
-              username: "kobo"
-              database: "formhub"
+          # Support email
+          - name: general.supportEmail
+            value: "support@kobotoolbox.local"
 
-          # Application image tags
-          kpi:
-            image:
-              tag: "2.022.24d"
-            subdomain: "kobo"
+          # Django secret (production)
+          - name: general.djangoSecret
+            value: "KoboProductionSecret2024ChangeInProduction"
 
-          kobocat:
-            image:
-              tag: "2.022.24a"
-            subdomain: "kc"
+          # Media storage configuration (actual chart structure)
+          - name: general.mediaStorage.enabled
+            value: "false"
+          - name: general.mediaStorage.size
+            value: "10Gi"
+          - name: general.mediaStorage.storageClass
+            value: "managed-csi"
+          - name: general.mediaStorage.accessMode
+            value: "ReadWriteOnce"
 
-          enketo:
-            image:
-              tag: "3.0.4"
-            replicas: 1
-            subdomain: "ee"
+          # Sentry configuration
+          - name: general.sentry.environment
+            value: "production"
 
-          nginx:
-            image:
-              tag: "1.21"
+          # PostgreSQL configuration (actual chart structure)
+          - name: postgresql.enabled
+            value: "true"
+          - name: postgresql.kobocatDatabase
+            value: "kobocat"
+          - name: postgresql.kpiDatabase
+            value: "koboform"
+          - name: postgresql.auth.postgresPassword
+            value: "postgres-admin-secure-2024"
+          - name: postgresql.auth.username
+            value: "postgres"
+          - name: postgresql.auth.password
+            value: "kobo-user-secure-2024"
+
+          # MongoDB configuration (actual chart structure)
+          - name: mongodb.enabled
+            value: "true"
+          - name: mongodb.auth.rootPassword
+            value: "mongo-root-secure-2024"
+          - name: mongodb.auth.username
+            value: "kobo"
+          - name: mongodb.auth.password
+            value: "mongo-user-secure-2024"
+          - name: mongodb.auth.database
+            value: "formhub"
+
+          # Application image tags (use chart defaults or override)
+          - name: kpi.image.tag
+            value: "2.022.24d"
+          - name: kobocat.image.tag
+            value: "2.022.24a"
+          - name: enketo.image.tag
+            value: "3.0.4"
+          - name: nginx.image.tag
+            value: "1.21"
+
+          # Enketo configuration (actual chart structure)
+          - name: enketo.replicas
+            value: "1"
+          - name: enketo.subdomain
+            value: "ee"
+
+          # KPI subdomain
+          - name: kpi.subdomain
+            value: "kobo"
+
+          # KoboCAT subdomain
+          - name: kobocat.subdomain
+            value: "kc"
 
           # Ingress (disabled)
-          ingress:
-            enabled: false
+          - name: ingress.enabled
+            value: "false"
 
           # Monitoring (disabled for now)
-          uwsgiExporter:
-            enabled: false
-          
-          flower:
-            enabled: false
+          - name: uwsgiExporter.enabled
+            value: "false"
+          - name: flower.enabled
+            value: "false"
 
           # Probes (enabled)
-          probes:
-            enabled: true
+          - name: probes.enabled
+            value: "true"
 
           # Priority class
-          priorityClass: ""
+          - name: priorityClass
+            value: ""
 
           # SMTP (disabled for development)
-          smtp:
-            host: ""
-            user: ""
-            password: ""
-            from: ""
+          - name: smtp.host
+            value: ""
+          - name: smtp.user
+            value: ""
+          - name: smtp.password
+            value: ""
+          - name: smtp.from
+            value: ""
 
           # External services (disabled)
-          external:
-            google:
-              apiKey: ""
-              analyticsToken: ""
-            ravenDSN:
-              kobocat: ""
-              kpi: ""
-              kpiJs: ""
-
-          # Service account configuration (for workload identity)
-          serviceAccount:
-            create: false
-            name: "kobotoolbox-workload-identity"
-
-          # Workload identity labels
-          podLabels:
-            azure.workload.identity/use: "true"
+          - name: external.google.apiKey
+            value: ""
+          - name: external.google.analyticsToken
+            value: ""
+          - name: external.ravenDSN.kobocat
+            value: ""
+          - name: external.ravenDSN.kpi
+            value: ""
+          - name: external.ravenDSN.kpiJs
+            value: ""
 
         valueFiles:
           - $values/values/kobotoolbox-values.yaml
-    # Values repository
     - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
       targetRevision: HEAD
       ref: values
