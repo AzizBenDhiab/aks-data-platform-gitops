@@ -27,22 +27,28 @@ spec:
           tag: "1.23.2"
           pullPolicy: IfNotPresent
 
-        # BYPASS hardcoded authentication by setting empty values
+        # PROPER AUTHENTICATION: Use chart's built-in mechanism with placeholder credentials
+        # These will be overridden by the init container
         auth:
           singleUser:
-            username: ""  # Empty to bypass chart's hardcoded logic
-            password: ""  # Empty to bypass chart's hardcoded logic
+            username: "admin"  # Placeholder - will be overridden
+            password: "temporaryPassword123"  # Placeholder - will be overridden
 
-        # Properties configuration
+        # Properties configuration with safetyValve for dynamic authentication
         properties:
-          sensitiveKey: "temporaryKey123456789"
+          sensitiveKey: "temporaryKey123456789"  # This will be overridden by Key Vault
           algorithm: "NIFI_PBKDF2_AES_GCM_256"
           webProxyHost: "nifi-prod.data-platform.local"
           isNode: false
           httpsPort: 8443
-          httpPort: null   # Disable HTTP when using HTTPS
+          httpPort: null
           webHttpsHost: "0.0.0.0"
           needClientAuth: false
+          # Override nifi.properties to use our dynamic configuration
+          safetyValve:
+            # Force NiFi to use the authorizer we'll create dynamically
+            nifi.security.user.authorizer: "managed-authorizer"
+            nifi.security.user.login.identity.provider: "single-user-provider"
 
         # Service account configuration
         sts:
@@ -53,20 +59,13 @@ spec:
             annotations:
               azure.workload.identity/use: "true"
 
-        # Environment variables (kept for compatibility)
+        # Environment variables for Key Vault integration
         env:
           - name: NIFI_SENSITIVE_PROPS_KEY
             valueFrom:
               secretKeyRef:
                 name: nifi-secrets
                 key: sensitive-key
-          - name: SINGLE_USER_CREDENTIALS_USERNAME
-            value: "admin"
-          - name: SINGLE_USER_CREDENTIALS_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: nifi-secrets
-                key: admin-password
           - name: KEYSTORE_PASSWORD
             valueFrom:
               secretKeyRef:
@@ -78,7 +77,7 @@ spec:
                 name: nifi-secrets
                 key: truststore-password
 
-        # DYNAMIC AUTHENTICATION: Init container to configure authentication from Key Vault
+        # DYNAMIC AUTHENTICATION: Init container to override chart's authentication
         initContainers:
           - name: nifi-auth-config
             image: apache/nifi:1.23.2
@@ -97,11 +96,14 @@ spec:
                 # Read credentials from mounted secrets
                 USERNAME="admin"
                 PASSWORD=$(cat /mnt/secrets-store/nifi-admin-password)
+                SENSITIVE_KEY=$(cat /mnt/secrets-store/nifi-sensitive-key)
                 
                 echo "Configuring NiFi with username: $USERNAME"
                 
-                # Create proper login-identity-providers.xml
+                # Create shared config directory
                 mkdir -p /shared-config
+                
+                # Create login-identity-providers.xml for single-user authentication
                 cat > /shared-config/login-identity-providers.xml << EOF
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
                 <loginIdentityProviders>
@@ -114,7 +116,7 @@ spec:
                 </loginIdentityProviders>
                 EOF
                 
-                # Create authorizers.xml with the admin user
+                # Create authorizers.xml with managed-authorizer (as expected by the chart)
                 cat > /shared-config/authorizers.xml << EOF
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
                 <authorizers>
@@ -142,9 +144,32 @@ spec:
                 </authorizers>
                 EOF
                 
+                # Create flow.xml.gz if it doesn't exist (prevents startup issues)
+                if [ ! -f /shared-config/flow.xml.gz ]; then
+                  cat > /tmp/empty-flow.xml << 'FLOWEOF'
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <flowController encoding-version="1.5">
+                    <maxTimerDrivenThreadCount>10</maxTimerDrivenThreadCount>
+                    <maxEventDrivenThreadCount>1</maxEventDrivenThreadCount>
+                    <rootGroup>
+                        <id>root-group</id>
+                        <name>NiFi Flow</name>
+                        <position x="0.0" y="0.0"/>
+                        <comment></comment>
+                    </rootGroup>
+                    <controllerServices></controllerServices>
+                    <reportingTasks></reportingTasks>
+                </flowController>
+                FLOWEOF
+                  gzip -c /tmp/empty-flow.xml > /shared-config/flow.xml.gz
+                fi
+                
+                # Set proper ownership
+                chown -R 1000:1000 /shared-config
+                
                 echo "Authentication configuration completed successfully"
                 echo "Username: $USERNAME"
-                echo "Configuration files created in /shared-config"
+                echo "Configuration files created in /shared-config:"
                 ls -la /shared-config/
             volumeMounts:
               - name: secrets-store
@@ -175,8 +200,12 @@ spec:
           - name: shared-config
             mountPath: /opt/nifi/nifi-current/conf-override
 
-        # Post-start hook to copy configuration files
+        # Post-start hook to copy configuration files and set single-user credentials
         postStart: |
+          #!/bin/bash
+          
+          echo "Post-start: Setting up dynamic authentication..."
+          
           # Copy the dynamically generated configuration files
           if [ -f /opt/nifi/nifi-current/conf-override/login-identity-providers.xml ]; then
             cp /opt/nifi/nifi-current/conf-override/login-identity-providers.xml /opt/nifi/nifi-current/conf/
@@ -186,6 +215,25 @@ spec:
           if [ -f /opt/nifi/nifi-current/conf-override/authorizers.xml ]; then
             cp /opt/nifi/nifi-current/conf-override/authorizers.xml /opt/nifi/nifi-current/conf/
             echo "Copied authorizers.xml from init container"
+          fi
+          
+          if [ -f /opt/nifi/nifi-current/conf-override/flow.xml.gz ]; then
+            cp /opt/nifi/nifi-current/conf-override/flow.xml.gz /opt/nifi/nifi-current/conf/
+            echo "Copied flow.xml.gz from init container"
+          fi
+          
+          # Read the actual password from Key Vault and set single-user credentials
+          if [ -f /mnt/secrets-store/nifi-admin-password ]; then
+            PASSWORD=$(cat /mnt/secrets-store/nifi-admin-password)
+            SENSITIVE_KEY=$(cat /mnt/secrets-store/nifi-sensitive-key)
+            echo "Setting single-user credentials..."
+            
+            # Update nifi.properties with the actual sensitive key from Key Vault
+            sed -i "s|nifi.sensitive.props.key=.*|nifi.sensitive.props.key=$SENSITIVE_KEY|g" /opt/nifi/nifi-current/conf/nifi.properties
+            
+            # Set single-user credentials
+            /opt/nifi/nifi-current/bin/nifi.sh set-single-user-credentials admin "$PASSWORD"
+            echo "Single-user credentials and sensitive key configured successfully"
           fi
 
         # Resources configuration
@@ -226,22 +274,22 @@ spec:
           runAsGroup: 1000
           fsGroup: 1000
 
-        # Probes configuration
+        # Probes configuration - give more time for dynamic setup
         startupProbe:
           enabled: true
-          failureThreshold: 30
+          failureThreshold: 40
           periodSeconds: 15
 
         readinessProbe:
           enabled: true
-          initialDelaySeconds: 120  # Give more time for configuration setup
+          initialDelaySeconds: 180  # More time for configuration setup
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 5
 
         livenessProbe:
           enabled: true
-          initialDelaySeconds: 240  # Give more time for initial setup
+          initialDelaySeconds: 300  # More time for initial setup
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 3
