@@ -1,22 +1,22 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: nifi-ingress
-  namespace: nifi-prod
+  name: superset-ingress
+  namespace: superset
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
 spec:
   ingressClassName: nginx
   rules:
-  - host: nifi.local
+  - host: superset.local
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: nifi-prod
+            name: apache-superset 
             port:
-              number: 8443
+              number: 8088
