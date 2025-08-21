@@ -289,4 +289,4 @@ spec:
     targetPort: 9080
   selector:
     app: joget-dx8-tomcat9
-  type: LoadBalancer
+  type: ClusterIP
