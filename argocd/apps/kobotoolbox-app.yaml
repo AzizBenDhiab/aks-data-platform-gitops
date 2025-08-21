@@ -11,6 +11,9 @@ metadata:
 spec:
   project: default
   sources:
+    - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
+      targetRevision: HEAD
+      path: manifests/nifi
     - repoURL: https://github.com/AzizBenDhiab/oaf-public-charts.git
       targetRevision: main
       path: charts/kobotoolbox
