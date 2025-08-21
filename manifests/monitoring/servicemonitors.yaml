@@ -1,0 +1,65 @@
+# ServiceMonitor pour NiFi
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nifi-metrics
+  namespace: monitoring
+  labels:
+    app: nifi
+    release: monitoring-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nifi
+  endpoints:
+  - port: http
+    path: /nifi-api/system-diagnostics
+    interval: 30s
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - nifi-prod
+---
+# ServiceMonitor pour KoboToolbox
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kobo-metrics
+  namespace: monitoring
+  labels:
+    app: kobotoolbox
+    release: monitoring-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kobotoolbox
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - kobotoolbox
+---
+# ServiceMonitor pour Superset
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: superset-metrics
+  namespace: monitoring
+  labels:
+    app: superset
+    release: monitoring-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: superset
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - superset
