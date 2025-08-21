@@ -1,13 +1,15 @@
 # .github/workflows/deploy-aks-data-platform.yml
 name: Deploy AKS Data Platform with ArgoCD
 on:
-  push:
-    branches: [main]
-    paths:
-      - "terraform/**"
-      - "k8s/**"
-      - "argocd/**"
-      - ".github/workflows/**"
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - "terraform/**"
+  #     - "k8s/**"
+  #     - "argocd/**"
+  #     - ".github/workflows/**"
+  #     - "manifests/**"
+  #     - "values/**"
   pull_request:
     branches: [main]
   workflow_dispatch:
