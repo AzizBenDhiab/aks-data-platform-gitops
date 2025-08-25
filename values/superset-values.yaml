@@ -84,7 +84,7 @@ redis:
 
 # Superset Node configuration with workload identity
 supersetNode:
-  replicaCount: 1
+  replicaCount: 3
   podLabels:
     azure.workload.identity/use: "true"
   extraVolumes:
@@ -114,7 +114,7 @@ supersetNode:
 
 # Superset Worker configuration
 supersetWorker:
-  replicaCount: 1
+  replicaCount: 3
   podLabels:
     azure.workload.identity/use: "true"
   extraVolumes:

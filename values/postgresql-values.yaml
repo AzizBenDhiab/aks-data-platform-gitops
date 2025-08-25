@@ -69,7 +69,7 @@ primary:
 
 # DISABLE read replicas for development
 readReplicas:
-  replicaCount: 0
+  replicaCount: 2
 
 # Security and permissions
 volumePermissions:
