@@ -8,7 +8,7 @@ metadata:
 spec:
   project: default
   sources:
-    # Source 1: Helm chart pour Prometheus/Grafana/AlertManager
+    # Source 1: Helm chart for Prometheus/Grafana/AlertManager
     - repoURL: https://prometheus-community.github.io/helm-charts
       targetRevision: "56.8.0"
       chart: kube-prometheus-stack
@@ -64,46 +64,17 @@ spec:
                   gnetId: 9628
                   revision: 7
                   datasource: Prometheus
-                
-          #       # NiFi Dashboard (custom)
-          #       nifi-dashboard:
-          #         json: |
-          #           {
-          #             "dashboard": {
-          #               "title": "NiFi Monitoring",
-          #               "panels": [
-          #                 {
-          #                   "title": "Active Threads",
-          #                   "type": "graph",
-          #                   "targets": [
-          #                     {
-          #                       "expr": "nifi_jvm_thread_states_count{state=\"runnable\"}"
-          #                     }
-          #                   ]
-          #                 }
-          #               ]
-          #             }
-          #           }
-                
-          #       # Application Overview
-          #       apps-overview:
-          #         json: |
-          #           {
-          #             "dashboard": {
-          #               "title": "Applications Overview",
-          #               "panels": [
-          #                 {
-          #                   "title": "Application Status",
-          #                   "type": "stat",
-          #                   "targets": [
-          #                     {
-          #                       "expr": "up{job=~\".*-(nifi|superset|joget|kobo).*\"}"
-          #                     }
-          #                   ]
-          #                 }
-          #               ]
-          #             }
-          #           }
+                # Kubernetes Deployment Dashboard
+                kubernetes-deployments:
+                  gnetId: 8588
+                  revision: 1
+                  datasource: Prometheus
+                # JVM Dashboard (for NiFi, Superset)
+                jvm-overview:
+                  gnetId: 4701
+                  revision: 5
+                  datasource: Prometheus
+
           # Prometheus Configuration
           prometheus:
             enabled: true
@@ -209,7 +180,7 @@ spec:
               prometheus: true
               prometheusOperator: true
 
-    # Source 2: Vos manifests personnalisés (ServiceMonitors, AlertRules)
+    # Source 2: Your custom manifests (ServiceMonitors, AlertRules)
     - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
       targetRevision: HEAD
       path: manifests/monitoring
