@@ -18,7 +18,7 @@ spec:
       annotations:
         summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
         description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted {{ $value }} times in the last hour"
-    
+   
     - alert: HighMemoryUsage
       expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.85
       for: 5m
@@ -27,7 +27,7 @@ spec:
       annotations:
         summary: "High memory usage on node {{ $labels.instance }}"
         description: "Memory usage is above 85% on node {{ $labels.instance }}"
-    
+   
     - alert: HighCPUUsage
       expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
       for: 5m
@@ -36,7 +36,7 @@ spec:
       annotations:
         summary: "High CPU usage on node {{ $labels.instance }}"
         description: "CPU usage is above 80% on node {{ $labels.instance }}"
-    
+   
     - alert: PodNotReady
       expr: kube_pod_status_ready{condition="false"} == 1
       for: 10m
@@ -45,8 +45,10 @@ spec:
       annotations:
         summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} not ready"
         description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-ready state for more than 10 minutes"
+
+    #  Application availability alerts
     - alert: ApplicationDown
-      expr: up{job=~".*-(nifi|superset|joget|kobo).*"} == 0
+      expr: up == 0
       for: 2m
       labels:
         severity: critical
@@ -73,7 +75,7 @@ spec:
         description: "PostgreSQL connections usage is {{ $value | humanizePercentage }}"
 
     - alert: PersistentVolumeUsageHigh
-      expr: (1 - kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes) > 0.85
+      expr: (kubelet_volume_stats_capacity_bytes - kubelet_volume_stats_available_bytes) / kubelet_volume_stats_capacity_bytes > 0.85
       for: 5m
       labels:
         severity: warning
@@ -89,3 +91,22 @@ spec:
       annotations:
         summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} replica mismatch"
         description: "Expected {{ $labels.spec_replicas }} replicas, but only {{ $labels.available_replicas }} are available"
+
+    #  Replica health alerts
+    - alert: ReplicasNotHealthy
+      expr: (kube_deployment_status_replicas_ready / kube_deployment_spec_replicas) < 0.67
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Less than 67% of replicas are ready for {{ $labels.namespace }}/{{ $labels.deployment }}"
+        description: "Only {{ $value | humanizePercentage }} of replicas are ready"
+
+    - alert: AllReplicasDown
+      expr: kube_deployment_status_replicas_ready == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "All replicas are down for {{ $labels.namespace }}/{{ $labels.deployment }}"
+        description: "No replicas are available for deployment {{ $labels.namespace }}/{{ $labels.deployment }}"
