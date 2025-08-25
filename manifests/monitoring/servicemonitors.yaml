@@ -63,3 +63,47 @@ spec:
   namespaceSelector:
     matchNames:
     - superset
+    
+# ServiceMonitor for PostgreSQL
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: postgresql-metrics
+  namespace: monitoring
+  labels:
+    app: postgresql
+    release: monitoring-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgresql
+      app.kubernetes.io/component: metrics
+  endpoints:
+  - port: http-metrics
+    interval: 30s
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - joget
+---
+# ServiceMonitor for Joget
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: joget-metrics
+  namespace: monitoring
+  labels:
+    app: joget
+    release: monitoring-stack
+spec:
+  selector:
+    matchLabels:
+      app: joget-dx8-tomcat9
+  endpoints:
+  - port: http
+    path: /jw/web/json/monitoring/status
+    interval: 30s
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - joget

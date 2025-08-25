@@ -165,6 +165,13 @@ init:
 service:
   type: ClusterIP
   port: 8088
+  labels:
+    app.kubernetes.io/name: superset
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8088"
+    prometheus.io/path: "/health"
+
 
 ingress:
   enabled: false

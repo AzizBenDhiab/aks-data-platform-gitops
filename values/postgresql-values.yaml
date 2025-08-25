@@ -75,11 +75,20 @@ readReplicas:
 volumePermissions:
   enabled: true
 
-# DISABLE metrics for development
+# Add/update metrics section
 metrics:
-  enabled: false
+  enabled: true
   serviceMonitor:
-    enabled: false
+    enabled: true
+    namespace: monitoring
+    interval: 30s
+    additionalLabels:
+      release: monitoring-stack
+  prometheusRule:
+    enabled: true
+    namespace: monitoring
+    additionalLabels:
+      release: monitoring-stack
 
 # DISABLE backup for development
 backup:
