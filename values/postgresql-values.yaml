@@ -6,7 +6,7 @@ auth:
     userPasswordKey: "user-password"
     databaseKey: "database"
   username: "joget_user"  # Non-sensitive, can stay hardcoded
-
+  database: "joget"
 # Use workload identity service account
 serviceAccount:
   create: false
