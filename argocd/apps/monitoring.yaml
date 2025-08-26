@@ -14,22 +14,46 @@ spec:
       chart: kube-prometheus-stack
       helm:
         values: |
-          # Grafana Configuration
+          # Grafana Configuration with Azure Key Vault
           grafana:
             enabled: true
-            adminPassword: admin123
+            # Use existing secret from Key Vault instead of hardcoded password
+            admin:
+              existingSecret: "monitoring-secrets"
+              userKey: admin
+              passwordKey: grafana-password
             persistence:
               enabled: true
               size: 10Gi
               storageClassName: managed-csi
             service:
               type: ClusterIP
+            # Use workload identity service account
+            serviceAccount:
+              create: false
+              name: monitoring-workload-identity
+            # Add workload identity labels and CSI volume
+            podLabels:
+              azure.workload.identity/use: "true"
+            extraVolumes:
+            - name: secrets-store
+              csi:
+                driver: secrets-store.csi.k8s.io
+                readOnly: true
+                volumeAttributes:
+                  secretProviderClass: "monitoring-secrets"
+            extraVolumeMounts:
+            - name: secrets-store
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
             grafana.ini:
               server:
                 domain: grafana.local
                 root_url: http://grafana.local
               security:
                 allow_embedding: true
+                # Use secret from Key Vault for session security
+                secret_key: "$__file{/mnt/secrets-store/prometheus-secret}"
             dashboardProviders:
               dashboardproviders.yaml:
                 apiVersion: 1
@@ -75,9 +99,12 @@ spec:
                   revision: 5
                   datasource: Prometheus
 
-          # Prometheus Configuration
+          # Prometheus Configuration with workload identity
           prometheus:
             enabled: true
+            serviceAccount:
+              create: false
+              name: monitoring-workload-identity
             prometheusSpec:
               retention: 30d
               retentionSize: 45GB
@@ -91,6 +118,21 @@ spec:
               serviceMonitorSelectorNilUsesHelmValues: false
               podMonitorSelectorNilUsesHelmValues: false
               ruleSelectorNilUsesHelmValues: false
+              # Add workload identity labels and CSI volume
+              podMetadata:
+                labels:
+                  azure.workload.identity/use: "true"
+              volumes:
+              - name: secrets-store
+                csi:
+                  driver: secrets-store.csi.k8s.io
+                  readOnly: true
+                  volumeAttributes:
+                    secretProviderClass: "monitoring-secrets"
+              volumeMounts:
+              - name: secrets-store
+                mountPath: "/mnt/secrets-store"
+                readOnly: true
               resources:
                 requests:
                   memory: 2Gi
@@ -101,9 +143,12 @@ spec:
             service:
               type: ClusterIP
 
-          # AlertManager Configuration
+          # AlertManager Configuration with Key Vault
           alertmanager:
             enabled: true
+            serviceAccount:
+              create: false
+              name: monitoring-workload-identity
             alertmanagerSpec:
               storage:
                 volumeClaimTemplate:
@@ -112,6 +157,21 @@ spec:
                     resources:
                       requests:
                         storage: 5Gi
+              # Add workload identity labels and CSI volume
+              podMetadata:
+                labels:
+                  azure.workload.identity/use: "true"
+              volumes:
+              - name: secrets-store
+                csi:
+                  driver: secrets-store.csi.k8s.io
+                  readOnly: true
+                  volumeAttributes:
+                    secretProviderClass: "monitoring-secrets"
+              volumeMounts:
+              - name: secrets-store
+                mountPath: "/mnt/secrets-store"
+                readOnly: true
               resources:
                 requests:
                   memory: 128Mi
@@ -141,16 +201,22 @@ spec:
                   send_resolved: true
               - name: 'null'
 
+          # Prometheus Operator with workload identity
+          prometheusOperator:
+            enabled: true
+            serviceAccount:
+              create: false
+              name: monitoring-workload-identity
+            # Add workload identity to operator pods
+            podLabels:
+              azure.workload.identity/use: "true"
+
           # Node Exporter
           nodeExporter:
             enabled: true
 
           # Kube State Metrics
           kubeStateMetrics:
-            enabled: true
-
-          # Prometheus Operator
-          prometheusOperator:
             enabled: true
 
           # Default Rules and Alerts
@@ -180,7 +246,7 @@ spec:
               prometheus: true
               prometheusOperator: true
 
-    # Source 2: Your custom manifests (ServiceMonitors, AlertRules)
+    # Source 2: Your custom manifests (ServiceMonitors, AlertRules, SecretProviderClass)
     - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
       targetRevision: HEAD
       path: manifests/monitoring
