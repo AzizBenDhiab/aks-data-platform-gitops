@@ -172,6 +172,18 @@ service:
     prometheus.io/port: "8088"
     prometheus.io/path: "/health"
 
+extraVolumes:
+- name: secrets-store
+  csi:
+    driver: secrets-store.csi.k8s.io
+    readOnly: true
+    volumeAttributes:
+      secretProviderClass: "superset-secrets"
+
+extraVolumeMounts:
+- name: secrets-store
+  mountPath: "/mnt/secrets-store"  
+  readOnly: true
 
 ingress:
   enabled: false
