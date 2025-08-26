@@ -40,7 +40,7 @@ spec:
           algorithm: "NIFI_PBKDF2_AES_GCM_256"
           webProxyHost: "nifi-prod.data-platform.local"
           isNode: false
-          httpsPort: null
+          httpsPort: ""
           httpPort: 8080
           webHttpsHost: "0.0.0.0"
           webProxyHost: "nifi-prod.data-platform.local"
@@ -261,7 +261,7 @@ spec:
         service:
           type: ClusterIP
           httpPort: 8080
-          httpsPort: 8443
+          httpsPort: ""
           annotations: {}
 
         # Zookeeper configuration
