@@ -41,7 +41,6 @@ spec:
           webProxyHost: "nifi-prod.data-platform.local"
           isNode: false
           httpsPort: 8443
-          httpPort: null
           webHttpsHost: "0.0.0.0"
           needClientAuth: false
           externalSecure: true  # Enable external SSL
@@ -268,7 +267,6 @@ spec:
         service:
           type: ClusterIP
           httpsPort: 8443
-          httpPort: 8080
           annotations: {}
 
         # Zookeeper configuration
@@ -294,13 +292,6 @@ spec:
           refreshSeconds: 300
           certDuration: 2160h  # 90 days
           caDuration: 87660h   # 10 years
-
-        # Authentication configuration for SSL
-        auth:
-          singleUser:
-            username: "admin"
-            password: "temporaryPassword123"  # Will be overridden by Key Vault
-          # SSL configuration is automatically handled by cert-manager
 
         # Probes configuration - give more time for dynamic setup
         startupProbe:
