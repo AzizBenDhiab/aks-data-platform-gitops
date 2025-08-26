@@ -80,6 +80,10 @@ spec:
           objectName: joget-user-password
           objectType: secret
           objectVersion: ""
+        - |
+          objectName: joget-admin-password
+          objectType: secret
+          objectVersion: ""
     tenantId: "eb554ecf-0352-4071-9a91-d464ab3bed97" # "__AZURE_TENANT_ID__"
   secretObjects:
   - secretName: joget-secrets

@@ -124,10 +124,15 @@ spec:
           -- Fix 1: Ensure admin user is active (critical for login)
           UPDATE dir_user SET active = 1 WHERE username = 'admin';
           
-          -- Fix 2: Ensure admin user has proper password hash
-          UPDATE dir_user SET password = '21232f297a57a5a743894a0e4a801fc3' 
-          WHERE username = 'admin' AND (password IS NULL OR password = '');
-          
+          # Read admin password from mounted secret 
+          ADMIN_PASSWORD=$(cat /mnt/secrets-store/joget-admin-password)
+
+          # Fix 2: Ensure admin user has proper password hash using secure hashing
+          psql -h postgresql -U joget_user -d joget << EOF
+          UPDATE dir_user 
+          SET password = crypt('$ADMIN_PASSWORD', gen_salt('bf'))
+          WHERE username = 'admin';
+          EOF
           -- Fix 3: Mark setup as completed in wf_setup table (prevents setup redirect)
           INSERT INTO wf_setup (id, property, value, ordering)
           VALUES ('setupCompleted', 'setupCompleted', 'true', 0)
