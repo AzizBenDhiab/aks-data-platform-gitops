@@ -4,18 +4,23 @@ metadata:
   name: nifi-ingress
   namespace: nifi-prod
   annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/proxy-ssl-secret: "nifi-prod/nifi-tls-secret"
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "true"
 spec:
   ingressClassName: nginx
   rules:
-  - host: nifi-prod.data-platform.local
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: nifi-prod
-            port:
-              number: 8080
+    - host: nifi.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nifi-service
+                port:
+                  number: 443
+  tls:
+    - hosts:
+        - nifi.example.com
+      secretName: nifi-tls-secret

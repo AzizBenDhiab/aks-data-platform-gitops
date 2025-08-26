@@ -40,6 +40,8 @@ spec:
           algorithm: "NIFI_PBKDF2_AES_GCM_256"
           webProxyHost: "nifi-prod.data-platform.local"
           isNode: false
+          httpsPort: 8443
+          httpPort: null
           webHttpsHost: "0.0.0.0"
           needClientAuth: false
           # Override nifi.properties to use our dynamic configuration
@@ -258,6 +260,7 @@ spec:
         service:
           type: ClusterIP
           httpPort: 8080
+          httpsPort: 8443
           annotations: {}
 
         # Zookeeper configuration
