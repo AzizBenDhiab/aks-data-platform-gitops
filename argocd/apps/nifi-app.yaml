@@ -34,29 +34,21 @@ spec:
             username: "admin"  # Placeholder - will be overridden
             password: "temporaryPassword123"  # Placeholder - will be overridden
 
-        # Properties configuration with SSL and dynamic authentication
+        # Properties configuration with safetyValve for dynamic authentication
         properties:
           sensitiveKey: "temporaryKey123456789"  # This will be overridden by Key Vault
           algorithm: "NIFI_PBKDF2_AES_GCM_256"
+          httpPort: 8080
+          httpsPort: null
           webProxyHost: "nifi-prod.data-platform.local"
           isNode: false
-          httpsPort: 8443
-          httpPort: null
-          webHttpsHost: "0.0.0.0"
+          webHttpHost: "0.0.0.0"
           needClientAuth: false
-          externalSecure: true  # Enable external SSL
           # Override nifi.properties to use our dynamic configuration
           safetyValve:
             # Force NiFi to use the authorizer we'll create dynamically
             nifi.security.user.authorizer: "managed-authorizer"
             nifi.security.user.login.identity.provider: "single-user-provider"
-            # SSL Configuration - cert-manager will handle the certificates
-            nifi.security.keystore: "/opt/nifi/nifi-current/conf/keystore.jks"
-            nifi.security.keystoreType: "JKS"
-            nifi.security.keystorePasswd: "changeme"
-            nifi.security.truststore: "/opt/nifi/nifi-current/conf/truststore.jks"
-            nifi.security.truststoreType: "JKS"
-            nifi.security.truststorePasswd: "changeme"
 
         # Service account configuration
         sts:
@@ -267,10 +259,10 @@ spec:
         # Service configuration
         service:
           type: ClusterIP
-          httpPort: null
+          httpPort: 8080
           httpsPort: 8443
           annotations: {}
-
+          
         # Zookeeper configuration
         zookeeper:
           enabled: true
@@ -281,26 +273,6 @@ spec:
           runAsUser: 1000
           runAsGroup: 1000
           fsGroup: 1000
-
-        # SSL/TLS Configuration with cert-manager
-        certManager:
-          enabled: true
-          clusterDomain: cluster.local
-          keystorePasswd: changeme
-          truststorePasswd: changeme
-          additionalDnsNames:
-            - nifi-prod.data-platform.local
-            - localhost
-          refreshSeconds: 300
-          certDuration: 2160h  # 90 days
-          caDuration: 87660h   # 10 years
-
-        # Authentication configuration for SSL
-        auth:
-          singleUser:
-            username: "admin"
-            password: "temporaryPassword123"  # Will be overridden by Key Vault
-          # SSL configuration is automatically handled by cert-manager
 
         # Probes configuration - give more time for dynamic setup
         startupProbe:
