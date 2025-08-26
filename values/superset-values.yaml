@@ -17,22 +17,6 @@ serviceAccount:
   create: false
   name: "superset-workload-identity"
 
-podLabels:
-  azure.workload.identity/use: "true"
-
-extraVolumes:
-- name: secrets-store
-  csi:
-    driver: secrets-store.csi.k8s.io
-    readOnly: true
-    volumeAttributes:
-      secretProviderClass: "superset-secrets"
-
-extraVolumeMounts:
-- name: secrets-store
-  mountPath: "/mnt/secrets-store"  
-  readOnly: true
-
 # PostgreSQL configuration using existing secret AND workload identity
 postgresql:
   enabled: true
@@ -100,7 +84,7 @@ redis:
 
 # Superset Node configuration with workload identity
 supersetNode:
-  replicaCount: 3
+  replicaCount: 1
   podLabels:
     azure.workload.identity/use: "true"
   extraVolumes:
@@ -130,7 +114,7 @@ supersetNode:
 
 # Superset Worker configuration
 supersetWorker:
-  replicaCount: 3
+  replicaCount: 1
   podLabels:
     azure.workload.identity/use: "true"
   extraVolumes:
@@ -181,13 +165,6 @@ init:
 service:
   type: ClusterIP
   port: 8088
-  labels:
-    app.kubernetes.io/name: superset
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "8088"
-    prometheus.io/path: "/health"
-
 
 ingress:
   enabled: false
