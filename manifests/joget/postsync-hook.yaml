@@ -117,15 +117,14 @@ spec:
           psql -h postgresql -U joget_user -d joget -f /tmp/jwdb-postgres.sql
           
           echo "Applying post-installation fixes..."
+          # Read admin password from mounted secret 
+          ADMIN_PASSWORD=$(cat /mnt/secrets-store/joget-admin-password)
           # Critical fixes for setup and admin user
           psql -h postgresql -U joget_user -d joget << 'EOF'
           \echo 'Applying essential fixes...'
           
           -- Fix 1: Ensure admin user is active (critical for login)
           UPDATE dir_user SET active = 1 WHERE username = 'admin';
-          
-          # Read admin password from mounted secret 
-          ADMIN_PASSWORD=$(cat /mnt/secrets-store/joget-admin-password)
 
           # Fix 2: Ensure admin user has proper password hash using secure hashing
           psql -h postgresql -U joget_user -d joget << EOF
