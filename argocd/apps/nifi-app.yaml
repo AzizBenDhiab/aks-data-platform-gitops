@@ -38,6 +38,8 @@ spec:
         properties:
           sensitiveKey: "temporaryKey123456789"  # This will be overridden by Key Vault
           algorithm: "NIFI_PBKDF2_AES_GCM_256"
+          httpPort: 8080
+          httpsPort: null
           webProxyHost: "nifi-prod.data-platform.local"
           isNode: false
           webHttpHost: "0.0.0.0"
@@ -258,6 +260,7 @@ spec:
         service:
           type: ClusterIP
           httpPort: 8080
+          httpsPort: null      
           annotations: {}
 
         # Zookeeper configuration
