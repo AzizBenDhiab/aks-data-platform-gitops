@@ -267,8 +267,8 @@ spec:
         # Service configuration
         service:
           type: ClusterIP
+          httpPort: null
           httpsPort: 8443
-          httpPort: 8080
           annotations: {}
 
         # Zookeeper configuration
