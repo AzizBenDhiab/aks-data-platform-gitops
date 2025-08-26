@@ -15,7 +15,7 @@ spec:
   - host: nifi-prod.data-platform.local
     http:
       paths:
-      - path: /nifi
+      - path: /
         pathType: Prefix
         backend:
           service:
