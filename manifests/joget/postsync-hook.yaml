@@ -126,7 +126,7 @@ spec:
           -- Fix 1: Ensure admin user is active (critical for login)
           UPDATE dir_user SET active = 1 WHERE username = 'admin';
 
-          # Fix 2: Ensure admin user has proper password hash using secure hashing
+          -- Fix 2: Ensure admin user has proper password hash using secure hashing
           UPDATE dir_user 
           SET password = crypt('$ADMIN_PASSWORD', gen_salt('bf'))
           WHERE username = 'admin';
