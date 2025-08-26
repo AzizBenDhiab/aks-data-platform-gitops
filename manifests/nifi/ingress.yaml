@@ -12,16 +12,19 @@ metadata:
     nginx.ingress.kubernetes.io/affinity-mode: "persistent"
     nginx.ingress.kubernetes.io/session-cookie-name: "NIFISESSIONID"
     nginx.ingress.kubernetes.io/session-cookie-path: "/"
-    nginx.ingress.kubernetes.io/session-cookie-samesite: "None"  # Allow cross-site cookies
-    nginx.ingress.kubernetes.io/session-cookie-secure: "true"   # Ensure HTTPS cookies
+    nginx.ingress.kubernetes.io/session-cookie-samesite: "None"
+    nginx.ingress.kubernetes.io/session-cookie-secure: "true"
     nginx.ingress.kubernetes.io/proxy-pass-headers: "true"
     nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
     nginx.ingress.kubernetes.io/proxy-buffers: "4 256k"
-    nginx.ingress.kubernetes.io/enable-cors: "true"             # Enable CORS
+    nginx.ingress.kubernetes.io/enable-cors: "true"
     nginx.ingress.kubernetes.io/cors-allow-origin: "https://nifi-prod.data-platform.local"
     nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
     nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, OPTIONS"
     nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type, X-Requested-With"
+    nginx.ingress.kubernetes.io/proxy-body-size: "8m"  # Ensure large request bodies are handled
+    nginx.ingress.kubernetes.io/rewrite-target: /    # Preserve URL path
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"  # Ensure HTTP/1.1 for proper header forwarding
 spec:
   ingressClassName: nginx
   rules:
