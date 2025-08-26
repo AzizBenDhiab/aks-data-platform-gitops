@@ -260,7 +260,7 @@ spec:
         service:
           type: ClusterIP
           httpPort: 8080
-          httpsPort: null      
+          httpsPort: ""      
           annotations: {}
 
         # Zookeeper configuration
