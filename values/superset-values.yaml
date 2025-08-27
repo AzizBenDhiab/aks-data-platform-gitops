@@ -3,7 +3,7 @@ configOverrides:
   secret: |
     import os
 
-    export SUPERSET_SECRET_KEY=$(cat /mnt/secrets-store/superset-secret-key)
+    SECRET_KEY=$(cat /mnt/secrets-store/superset-secret-key)
 
     # Enable CORS for development (restrict in production)
     ENABLE_CORS = True
