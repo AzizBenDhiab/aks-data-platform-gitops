@@ -99,27 +99,6 @@ extraVolumeMounts:
   mountPath: "/mnt/secrets-store"
   readOnly: true
 
-# Global environment variables (using extraEnvRaw for all)
-extraEnvRaw:
-- name: SUPERSET_SECRET_KEY
-  valueFrom:
-    secretKeyRef:
-      name: superset-secrets
-      key: secret-key
-- name: DB_USER
-  value: "superset"
-- name: DB_HOST
-  value: "apache-superset-postgresql"
-- name: DB_PORT
-  value: "5432"
-- name: DB_NAME
-  value: "superset"
-- name: DB_PASS
-  valueFrom:
-    secretKeyRef:
-      name: superset-secrets
-      key: postgres-password
-
 # Superset Node configuration
 supersetNode:
   replicaCount: 1
@@ -136,12 +115,20 @@ supersetNode:
   - /bin/sh
   - -c
   - |
+    # Set environment variables
+    export DB_USER=superset
+    export DB_HOST=apache-superset-postgresql
+    export DB_PORT=5432
+    export DB_NAME=superset
+    export DB_PASS=$(cat /mnt/secrets-store/postgres-password)
+    export SUPERSET_SECRET_KEY=$(cat /mnt/secrets-store/secret-key)
     # Debug environment variables
     echo "DB_USER: $DB_USER"
     echo "DB_PASS: $DB_PASS"
     echo "DB_HOST: $DB_HOST"
     echo "DB_PORT: $DB_PORT"
     echo "DB_NAME: $DB_NAME"
+    echo "SUPERSET_SECRET_KEY: $SUPERSET_SECRET_KEY"
     # Start Superset
     . {{ .Values.configMountPath }}/superset_bootstrap.sh; gunicorn --bind "0.0.0.0:{{ .Values.service.port }}" --access-logfile '-' --error-logfile '-' --workers 1 --worker-class gthread --threads 20 --timeout 60 --keep-alive 2 --max-requests 1000 --max-requests-jitter 100 --preload "superset.app:create_app()"
 
@@ -157,20 +144,24 @@ supersetWorker:
     requests:
       memory: 256Mi
       cpu: 125m
-  extraEnvRaw:
-  - name: DB_USER
-    value: "superset"
-  - name: DB_HOST
-    value: "apache-superset-postgresql"
-  - name: DB_PORT
-    value: "5432"
-  - name: DB_NAME
-    value: "superset"
-  - name: DB_PASS
-    valueFrom:
-      secretKeyRef:
-        name: superset-secrets
-        key: postgres-password
+  command:
+  - /bin/sh
+  - -c
+  - |
+    # Set environment variables
+    export DB_USER=superset
+    export DB_HOST=apache-superset-postgresql
+    export DB_PORT=5432
+    export DB_NAME=superset
+    export DB_PASS=$(cat /mnt/secrets-store/postgres-password)
+    # Debug environment variables
+    echo "DB_USER: $DB_USER"
+    echo "DB_PASS: $DB_PASS"
+    echo "DB_HOST: $DB_HOST"
+    echo "DB_PORT: $DB_PORT"
+    echo "DB_NAME: $DB_NAME"
+    # Start Superset worker
+    . {{ .Values.configMountPath }}/superset_bootstrap.sh; celery --app=superset.tasks.celery_app:app worker --pool=gevent --concurrency=20 -l INFO
 
 # Disable Celery Beat
 supersetCeleryBeat:
@@ -187,12 +178,16 @@ init:
     email: admin@example.com
   podLabels:
     azure.workload.identity/use: "true"
-  extraEnvRaw:
-  - name: SUPERSET_ADMIN_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: superset-secrets
-        key: admin-password
+  command:
+  - /bin/sh
+  - -c
+  - |
+    # Set environment variables
+    export SUPERSET_ADMIN_PASSWORD=$(cat /mnt/secrets-store/admin-password)
+    # Debug environment variable
+    echo "SUPERSET_ADMIN_PASSWORD: $SUPERSET_ADMIN_PASSWORD"
+    # Run init
+    . {{ .Values.configMountPath }}/superset_bootstrap.sh; superset init
 
 service:
   type: ClusterIP
@@ -205,6 +200,7 @@ runAsUser: 1000
 
 bootstrapScript: |
   #!/bin/bash
+  pip install --upgrade pip
   pip install --no-cache-dir \
     psycopg2-binary \
     redis \
