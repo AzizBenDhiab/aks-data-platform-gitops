@@ -12,7 +12,7 @@ configOverrides:
       'origins': ['http://localhost:8088']
     }
 
-#  Use global serviceAccountName parameter
+# Use global serviceAccountName parameter
 serviceAccountName: "superset-workload-identity"
 
 # Service account configuration
@@ -29,20 +29,8 @@ postgresql:
       userPasswordKey: "postgres-password"  
     database: "superset"
     username: "superset"
-  primary:
-    persistence:
-      enabled: true
-      size: 10Gi
-      storageClass: "managed-csi"
-    resources:
-      limits:
-        memory: 512Mi
-        cpu: 500m
-      requests:
-        memory: 256Mi
-        cpu: 250m
   
-  #  Configure PostgreSQL to use workload identity
+  # Configure PostgreSQL to use workload identity
   serviceAccount:
     create: false
     name: "superset-workload-identity"
@@ -53,11 +41,11 @@ postgresql:
       size: 10Gi
       storageClass: "managed-csi"
     
-    #  Add workload identity label to PostgreSQL pods
+    # Add workload identity label to PostgreSQL pods
     podLabels:
       azure.workload.identity/use: "true"
     
-    #  Add CSI volume for secret mounting to PostgreSQL
+    # Add CSI volume for secret mounting to PostgreSQL
     extraVolumes:
     - name: secrets-store
       csi:
@@ -96,11 +84,11 @@ redis:
         memory: 128Mi
         cpu: 100m
 
-#  Add global workload identity label to ALL pods
+# Add global workload identity label to ALL pods
 extraLabels:
   azure.workload.identity/use: "true"
 
-#  Add global CSI volume configuration
+# Add global CSI volume configuration
 extraVolumes:
 - name: secrets-store
   csi:
@@ -114,26 +102,28 @@ extraVolumeMounts:
   mountPath: "/mnt/secrets-store"
   readOnly: true
 
-#  Add global environment variables for secret access
+# FIXED: Set all required database environment variables
 extraEnv:
   SUPERSET_SECRET_KEY:
     valueFrom:
       secretKeyRef:
         name: superset-secrets
         key: secret-key
+  DB_HOST: "apache-superset-postgresql"
+  DB_PORT: "5432"
+  DB_USER: "superset"
+  DB_NAME: "superset"
+  DB_PASS:
+    valueFrom:
+      secretKeyRef:
+        name: superset-secrets
+        key: postgres-password
 
-# Superset Node configuration
+# Superset Node configuration - SIMPLIFIED
 supersetNode:
   replicaCount: 1
   podLabels:
     azure.workload.identity/use: "true"
-  #  CORRECT: Set database connection parameters - use a placeholder for password
-  connections:
-    db_host: "apache-superset-postgresql"
-    db_port: "5432"
-    db_user: "superset"
-    db_pass: "placeholder"  # This will be overridden by the init script
-    db_name: "superset"
   resources:
     limits:
       memory: 1Gi
@@ -141,17 +131,6 @@ supersetNode:
     requests:
       memory: 512Mi
       cpu: 250m
-
-# Add an init script to set the correct password from the mounted secret
-supersetNode:
-  command:
-  - /bin/sh
-  - -c
-  - |
-    # Read password from mounted secret file and export as environment variable
-    export DB_PASS=$(cat /mnt/secrets-store/superset-postgres-password)
-    # Start superset
-    . {{ .Values.configMountPath }}/superset_bootstrap.sh; gunicorn --bind  "0.0.0.0:{{ .Values.service.port }}" --access-logfile '-' --error-logfile '-' --workers 1 --worker-class gthread --threads 20 --timeout 60 --keep-alive 2 --max-requests 1000 --max-requests-jitter 100 --preload "superset.app:create_app()"
 
 # Superset Worker configuration
 supersetWorker:
