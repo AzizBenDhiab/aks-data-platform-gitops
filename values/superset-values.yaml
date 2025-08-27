@@ -91,11 +91,38 @@ extraVolumes:
     readOnly: true
     volumeAttributes:
       secretProviderClass: "superset-secrets"
+- name: datasources-config
+  configMap:
+    name: superset-datasources-config
 
 extraVolumeMounts:
 - name: secrets-store
   mountPath: "/mnt/secrets-store"
   readOnly: true
+- name: datasources-config
+  mountPath: "/app/configs"
+  readOnly: true
+
+# Extra configs for datasources
+extraConfigs:
+  import_datasources.yaml: |
+    databases:
+    - database_name: PostgreSQL Primary
+      sqlalchemy_uri: postgresql+psycopg2://superset:${DB_PASS}@apache-superset-postgresql:5432/superset
+      extra:
+        metadata_params: {}
+        engine_params: {}
+        metadata_cache_timeout: {}
+        schemas_allowed_for_file_upload: []
+      allow_run_async: true
+      allow_ctas: true
+      allow_cvas: true
+      allow_dml: true
+      allow_multi_schema_metadata_fetch: true
+      allow_file_upload: true
+      expose_in_sqllab: true
+      force_ctas_schema: null
+      uuid: 550e8400-e29b-41d4-a716-446655440000
 
 # Superset Node configuration
 supersetNode:
@@ -182,9 +209,13 @@ init:
 
       echo "Loading examples..."
       superset load_examples
+      
+      # Process datasources template with environment variables
       if [ -f "/app/configs/import_datasources.yaml" ]; then
+        echo "Processing datasources template..."
+        envsubst < /app/configs/import_datasources.yaml > /tmp/import_datasources_processed.yaml
         echo "Importing database connections.... "
-        superset import_datasources -p /app/configs/import_datasources.yaml
+        superset import_datasources -p /tmp/import_datasources_processed.yaml
       fi
 
 

@@ -1,0 +1,17 @@
+databases:
+- database_name: PostgreSQL Primary
+  sqlalchemy_uri: postgresql+psycopg2://superset:{{ DB_PASS }}@apache-superset-postgresql:5432/superset
+  extra:
+    metadata_params: {}
+    engine_params: {}
+    metadata_cache_timeout: {}
+    schemas_allowed_for_file_upload: []
+  allow_run_async: true
+  allow_ctas: true
+  allow_cvas: true
+  allow_dml: true
+  allow_multi_schema_metadata_fetch: true
+  allow_file_upload: true
+  expose_in_sqllab: true
+  force_ctas_schema: null
+  uuid: 550e8400-e29b-41d4-a716-446655440000
