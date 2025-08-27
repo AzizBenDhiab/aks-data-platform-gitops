@@ -154,27 +154,23 @@ supersetCeleryBeat:
 
 # Initial setup with admin credentials
 init:
-  loadExamples: true
   createAdmin: true
-  adminUser:
-    username: admin
-    firstname: Admin
-    lastname: User
-    email: admin@example.com
-  podLabels:
-    azure.workload.identity/use: "true"
   command:
-  - /bin/sh
-  - -c
-  - |
-    # Set environment variables
-    export SECRET_KEY=$(cat /mnt/secrets-store/superset-secret-key)
-    export DB_PASS=$(cat /mnt/secrets-store/superset-postgres-password)
-    export SUPERSET_ADMIN_PASSWORD=$(cat /mnt/secrets-store/superset-admin-password)
-    # Run init
-    . {{ .Values.configMountPath }}/superset_bootstrap.sh
-    superset re-encrypt-secrets
-    . {{ .Values.configMountPath }}/superset_init.sh
+    - /bin/sh
+    - -c
+    - |
+      export SUPERSET_ADMIN_PASSWORD=$(cat /mnt/secrets-store/admin-password)
+      . {{ .Values.configMountPath }}/superset_bootstrap.sh
+      superset db upgrade
+      superset init
+      superset fab create-admin \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --email admin@example.com \
+          --password "$SUPERSET_ADMIN_PASSWORD" \
+          || true
+      superset load_examples
 
 
 service:
