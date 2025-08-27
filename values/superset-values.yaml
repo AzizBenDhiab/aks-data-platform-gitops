@@ -109,8 +109,8 @@ supersetNode:
     export DB_HOST=apache-superset-postgresql
     export DB_PORT=5432
     export DB_NAME=superset
-    export DB_PASS=$(cat /mnt/secrets-store/postgres-password)
-    export SUPERSET_SECRET_KEY=$(cat /mnt/secrets-store/secret-key)
+    export DB_PASS=$(cat /mnt/secrets-store/superset-postgres-password)
+    export SUPERSET_SECRET_KEY=$(cat /mnt/secrets-store/superset-secret-key)
     # Debug environment variables
     echo "DB_USER: $DB_USER"
     echo "DB_PASS: $DB_PASS"
@@ -142,7 +142,7 @@ supersetWorker:
     export DB_HOST=apache-superset-postgresql
     export DB_PORT=5432
     export DB_NAME=superset
-    export DB_PASS=$(cat /mnt/secrets-store/postgres-password)
+    export DB_PASS=$(cat /mnt/secrets-store/superset-postgres-password)
     # Debug environment variables
     echo "DB_USER: $DB_USER"
     echo "DB_PASS: $DB_PASS"
