@@ -154,7 +154,7 @@ supersetCeleryBeat:
 
 # Initial setup with admin credentials
 init:
-  createAdmin: true
+  createAdmin: false
   command:
     - /bin/sh
     - -c
