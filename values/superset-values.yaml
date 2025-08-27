@@ -161,16 +161,27 @@ init:
     - |
       export SUPERSET_ADMIN_PASSWORD=$(cat /mnt/secrets-store/admin-password)
       . {{ .Values.configMountPath }}/superset_bootstrap.sh
+      set -eu
+      echo "Upgrading DB schema..."
       superset db upgrade
+      echo "Initializing roles..."
       superset init
+
+      echo "Creating admin user..."
       superset fab create-admin \
-          --username admin \
-          --firstname Admin \
-          --lastname User \
-          --email admin@example.com \
-          --password "$SUPERSET_ADMIN_PASSWORD" \
-          || true
+                      --username admin \
+                      --firstname Admin \
+                      --lastname User \
+                      --email admin@example.com \
+                      --password "$SUPERSET_ADMIN_PASSWORD" \
+                      || true
+
+      echo "Loading examples..."
       superset load_examples
+      if [ -f "/app/configs/import_datasources.yaml" ]; then
+        echo "Importing database connections.... "
+        superset import_datasources -p /app/configs/import_datasources.yaml
+      fi
 
 
 service:
