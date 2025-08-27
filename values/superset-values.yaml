@@ -3,7 +3,7 @@ configOverrides:
   secret: |
     import os
 
-    SECRET_KEY=$(cat /mnt/secrets-store/superset-secret-key)
+    SECRET_KEY = os.environ.get('SUPERSET_SECRET_KEY', 'fallback-secret')
 
     # Enable CORS for development (restrict in production)
     ENABLE_CORS = True
@@ -168,7 +168,7 @@ init:
   - -c
   - |
     # Set environment variables
-    export SUPERSET_SECRET_KEY=$(cat /mnt/secrets-store/superset-secret-key)
+    export SECRET_KEY=$(cat /mnt/secrets-store/superset-secret-key)
     export DB_PASS=$(cat /mnt/secrets-store/superset-postgres-password)
     export SUPERSET_ADMIN_PASSWORD=$(cat /mnt/secrets-store/superset-admin-password)
     # Run init
