@@ -171,7 +171,10 @@ init:
     export DB_PASS=$(cat /mnt/secrets-store/superset-postgres-password)
     export SUPERSET_ADMIN_PASSWORD=$(cat /mnt/secrets-store/superset-admin-password)
     # Run init
-    . {{ .Values.configMountPath }}/superset_bootstrap.sh; superset init
+    . {{ .Values.configMountPath }}/superset_bootstrap.sh
+    superset re-encrypt-secrets
+    . {{ .Values.configMountPath }}/superset_init.sh
+
 
 service:
   type: ClusterIP
