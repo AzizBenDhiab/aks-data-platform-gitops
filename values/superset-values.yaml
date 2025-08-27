@@ -1,9 +1,9 @@
-# Superset configuration overrides using secrets
+# Superset configuration overrides
 configOverrides:
   secret: |
     import os
     SECRET_KEY = os.environ.get('SUPERSET_SECRET_KEY', 'fallback-secret')
-    # Enable CORS for development
+    # Enable CORS for development (restrict in production)
     ENABLE_CORS = True
     CORS_OPTIONS = {
       'supports_credentials': True,
@@ -11,54 +11,33 @@ configOverrides:
       'resources': ['*'],
       'origins': ['http://localhost:8088']
     }
+    # Define SQLALCHEMY_DATABASE_URI using environment variables
+    SQLALCHEMY_DATABASE_URI = f"postgresql+psycopg2://{os.environ.get('DB_USER')}:{os.environได้
 
-# Use global serviceAccountName parameter
+System: .get('DB_PASS')}@{os.environ.get('DB_HOST')}:{os.environ.get('DB_PORT')}/{os.environ.get('DB_NAME')}"
+
+# Global service account for Azure Workload Identity
 serviceAccountName: "superset-workload-identity"
 
 # Service account configuration
 serviceAccount:
   create: false
 
-# PostgreSQL configuration using existing secret - SIMPLIFIED
+# PostgreSQL configuration
 postgresql:
   enabled: true
   auth:
     existingSecret: "superset-secrets"
     secretKeys:
       adminPasswordKey: "postgres-password"
-      userPasswordKey: "postgres-password"  
+      userPasswordKey: "postgres-password"
     database: "superset"
     username: "superset"
-  
-  # Configure PostgreSQL to use workload identity
-  serviceAccount:
-    create: false
-    name: "superset-workload-identity"
-  
   primary:
     persistence:
       enabled: true
       size: 10Gi
       storageClass: "managed-csi"
-    
-    # Add workload identity label to PostgreSQL pods
-    podLabels:
-      azure.workload.identity/use: "true"
-    
-    # Add CSI volume for secret mounting to PostgreSQL
-    extraVolumes:
-    - name: secrets-store
-      csi:
-        driver: secrets-store.csi.k8s.io
-        readOnly: true
-        volumeAttributes:
-          secretProviderClass: "superset-secrets"
-    
-    extraVolumeMounts:
-    - name: secrets-store
-      mountPath: "/mnt/secrets-store"
-      readOnly: true
-    
     resources:
       limits:
         memory: 512Mi
@@ -66,7 +45,64 @@ postgresql:
       requests:
         memory: 256Mi
         cpu: 250m
+    podLabels:
+      azure.workload.identity/use: "true"
+    extraVolumes:
+    - name: secrets-store
+      csi:
+        driver: secrets-store.csi.k8s.io
+        readOnly: true
+        volumeAttributes:
+          secretProviderClass: "superset-secrets"
+    extraVolumeMounts:
+    - name: secrets-store
+      mountPath: "/mnt/secrets-store"
+      read .get('DB_PASS')}@{os.environ.get('DB_HOST')}:{os.environ.get('DB_PORT')}/{os.environ.get('DB_NAME')}"
 
+# Global service account for Azure Workload Identity
+serviceAccountName: "superset-workload-identity"
+
+# Service account configuration
+serviceAccount:
+  create: false
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  auth:
+    existingSecret: "superset-secrets"
+    secretKeys:
+      adminPasswordKey: "postgres-password"
+      userPasswordKey: "postgres-password"
+    database: "superset"
+    username: "superset"
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: "managed-csi"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+      requests:
+        memory: 256Mi
+        cpu: 250m
+    podLabels:
+      azure.workload.identity/use: "true"
+    extraVolumes:
+    - name: secrets-store
+      csi:
+        driver: secrets-store.csi.k8s.io
+        readOnly: true
+        volumeAttributes:
+          secretProviderClass: "superset-secrets"
+    extraVolumeMounts:
+    - name: secrets-store
+      mountPath: "/mnt/secrets-store"
+      readOnly: true
+
+# Redis configuration
 redis:
   enabled: true
   auth:
@@ -84,11 +120,11 @@ redis:
         memory: 128Mi
         cpu: 100m
 
-# Add global workload identity label to ALL pods
+# Global labels for workload identity
 extraLabels:
   azure.workload.identity/use: "true"
 
-# Add global CSI volume configuration
+# Global CSI volume for Key Vault secrets
 extraVolumes:
 - name: secrets-store
   csi:
@@ -102,24 +138,28 @@ extraVolumeMounts:
   mountPath: "/mnt/secrets-store"
   readOnly: true
 
-# FIXED: Set all required database environment variables
+# Global environment variables
 extraEnv:
   SUPERSET_SECRET_KEY:
     valueFrom:
       secretKeyRef:
         name: superset-secrets
         key: secret-key
-  DB_HOST: "apache-superset-postgresql"
-  DB_PORT: "5432"
-  DB_USER: "superset"
-  DB_NAME: "superset"
+  DB_USER:
+    value: "superset"
+  DB_HOST:
+    value: "apache-superset-postgresql"
+  DB_PORT:
+    value: "5432"
+  DB_NAME:
+    value: "superset"
   DB_PASS:
     valueFrom:
       secretKeyRef:
         name: superset-secrets
-        key: postgres-password
+        key: superset-postgres-password
 
-# Superset Node configuration - SIMPLIFIED
+# Superset Node configuration
 supersetNode:
   replicaCount: 1
   podLabels:
@@ -131,6 +171,12 @@ supersetNode:
     requests:
       memory: 512Mi
       cpu: 250m
+  command:
+  - /bin/sh
+  - -c
+  - |
+    # Start Superset (no need to set DB_PASS here as it's in extraEnv)
+    . {{ .Values.configMountPath }}/superset_bootstrap.sh; gunicorn --bind "0.0.0.0:{{ .Values.service.port }}" --access-logfile '-' --error-logfile '-' --workers 1 --worker-class gthread --threads 20 --timeout 60 --keep-alive 2 --max-requests 1000 --max-requests-jitter 100 --preload "superset.app:create_app()"
 
 # Superset Worker configuration
 supersetWorker:
@@ -144,12 +190,26 @@ supersetWorker:
     requests:
       memory: 256Mi
       cpu: 125m
+  extraEnv:
+    DB_USER:
+      value: "superset"
+    DB_HOST:
+      value: "apache-superset-postgresql"
+    DB_PORT:
+      value: "5432"
+    DB_NAME:
+      value: "superset"
+    DB_PASS:
+      valueFrom:
+        secretKeyRef:
+          name: superset-secrets
+          key: superset-postgres-password
 
 # Disable Celery Beat
 supersetCeleryBeat:
   enabled: false
 
-# Initial setup with admin password from secret
+# Initial setup with admin credentials
 init:
   loadExamples: true
   createAdmin: true
