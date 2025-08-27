@@ -103,11 +103,13 @@ extraConfigs:
     databases:
     - database_name: PostgreSQL Primary
       sqlalchemy_uri: postgresql+psycopg2://superset:${DB_PASS}@apache-superset-postgresql:5432/superset
-      extra:
-        metadata_params: {}
-        engine_params: {}
-        metadata_cache_timeout: {}
-        schemas_allowed_for_file_upload: []
+      extra: |
+        {
+          "metadata_params": {},
+          "engine_params": {},
+          "metadata_cache_timeout": {},
+          "schemas_allowed_for_file_upload": []
+        }
       allow_run_async: true
       allow_ctas: true
       allow_cvas: true
