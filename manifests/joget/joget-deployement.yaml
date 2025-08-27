@@ -93,6 +93,8 @@ spec:
       key: postgres-password
     - objectName: joget-user-password
       key: joget-password
+    - objectName: joget-admin-password
+      key: joget-admin-password
 ---
 apiVersion: apps/v1
 kind: Deployment

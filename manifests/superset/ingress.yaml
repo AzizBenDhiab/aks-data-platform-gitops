@@ -4,9 +4,11 @@ metadata:
   name: superset-ingress
   namespace: superset
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "superset_session"
+    nginx.ingress.kubernetes.io/session-cookie-hash: "sha1"
 spec:
   ingressClassName: nginx
   rules:
@@ -17,6 +19,6 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: apache-superset 
+            name: apache-superset
             port:
               number: 8088
