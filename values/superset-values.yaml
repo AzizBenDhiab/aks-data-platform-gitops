@@ -12,10 +12,11 @@ configOverrides:
       'origins': ['http://localhost:8088']
     }
 
-# Use workload identity service account for main Superset components
+serviceAccountName: "superset-workload-identity"
+
+# Service account configuration
 serviceAccount:
   create: false
-  name: "superset-workload-identity"
 
 # PostgreSQL configuration using existing secret AND workload identity
 postgresql:
@@ -79,31 +80,34 @@ redis:
         memory: 128Mi
         cpu: 100m
 
-# Superset Node configuration with workload identity
+extraLabels:
+  azure.workload.identity/use: "true"
+
+extraVolumes:
+- name: secrets-store
+  csi:
+    driver: secrets-store.csi.k8s.io
+    readOnly: true
+    volumeAttributes:
+      secretProviderClass: "superset-secrets"
+
+extraVolumeMounts:
+- name: secrets-store
+  mountPath: "/mnt/secrets-store"
+  readOnly: true
+
+extraEnv:
+  SUPERSET_SECRET_KEY:
+    valueFrom:
+      secretKeyRef:
+        name: superset-secrets
+        key: secret-key
+
+# Superset Node configuration
 supersetNode:
   replicaCount: 1
-  serviceAccount:
-    create: false
-    name: "superset-workload-identity"
   podLabels:
     azure.workload.identity/use: "true"
-  extraVolumes:
-  - name: secrets-store
-    csi:
-      driver: secrets-store.csi.k8s.io
-      readOnly: true
-      volumeAttributes:
-        secretProviderClass: "superset-secrets"
-  extraVolumeMounts:
-  - name: secrets-store
-    mountPath: "/mnt/secrets-store"
-    readOnly: true
-  extraEnv:
-    SUPERSET_SECRET_KEY:
-      valueFrom:
-        secretKeyRef:
-          name: superset-secrets
-          key: secret-key
   resources:
     limits:
       memory: 1Gi
@@ -115,28 +119,8 @@ supersetNode:
 # Superset Worker configuration
 supersetWorker:
   replicaCount: 1
-  serviceAccount:
-    create: false
-    name: "superset-workload-identity"
   podLabels:
     azure.workload.identity/use: "true"
-  extraVolumes:
-  - name: secrets-store
-    csi:
-      driver: secrets-store.csi.k8s.io
-      readOnly: true
-      volumeAttributes:
-        secretProviderClass: "superset-secrets"
-  extraVolumeMounts:
-  - name: secrets-store
-    mountPath: "/mnt/secrets-store"
-    readOnly: true
-  extraEnv:
-    SUPERSET_SECRET_KEY:
-      valueFrom:
-        secretKeyRef:
-          name: superset-secrets
-          key: secret-key
   resources:
     limits:
       memory: 512Mi
@@ -151,11 +135,6 @@ supersetCeleryBeat:
 
 # Initial setup with admin password from secret
 init:
-  serviceAccount:
-    create: false
-    name: "superset-workload-identity"
-  podLabels:
-    azure.workload.identity/use: "true"
   loadExamples: true
   createAdmin: true
   adminUser:
@@ -163,23 +142,14 @@ init:
     firstname: Admin
     lastname: User
     email: admin@example.com
+  podLabels:
+    azure.workload.identity/use: "true"
   extraEnv:
     SUPERSET_ADMIN_PASSWORD:
       valueFrom:
         secretKeyRef:
           name: superset-secrets
           key: admin-password
-  extraVolumes:
-  - name: secrets-store
-    csi:
-      driver: secrets-store.csi.k8s.io
-      readOnly: true
-      volumeAttributes:
-        secretProviderClass: "superset-secrets"
-  extraVolumeMounts:
-  - name: secrets-store
-    mountPath: "/mnt/secrets-store"
-    readOnly: true
 
 service:
   type: ClusterIP
