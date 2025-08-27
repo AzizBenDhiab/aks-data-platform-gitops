@@ -159,7 +159,7 @@ init:
     - /bin/sh
     - -c
     - |
-      export SUPERSET_ADMIN_PASSWORD=$(cat /mnt/secrets-store/admin-password)
+      export SUPERSET_ADMIN_PASSWORD=$(cat /mnt/secrets-store/superset-admin-password)
       export SECRET_KEY=$(cat /mnt/secrets-store/superset-secret-key)
       export DB_PASS=$(cat /mnt/secrets-store/superset-postgres-password)
       . {{ .Values.configMountPath }}/superset_bootstrap.sh
