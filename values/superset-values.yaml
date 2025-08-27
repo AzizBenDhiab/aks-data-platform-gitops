@@ -207,7 +207,7 @@ init:
       # Process datasources template with environment variables
       if [ -f "/app/configs/import_datasources.yaml" ]; then
         echo "Processing datasources template..."
-        envsubst < /app/configs/import_datasources.yaml > /tmp/import_datasources_processed.yaml
+        sed "s/\${DB_PASS}/$DB_PASS/g" /app/configs/import_datasources.yaml > /tmp/import_datasources_processed.yaml
         echo "Importing database connections.... "
         superset import_datasources -p /tmp/import_datasources_processed.yaml
       fi
