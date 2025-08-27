@@ -2,17 +2,32 @@
 configOverrides:
   secret: |
     import os
+
     SECRET_KEY = os.environ.get('SUPERSET_SECRET_KEY', 'fallback-secret')
+
     # Enable CORS for development (restrict in production)
     ENABLE_CORS = True
     CORS_OPTIONS = {
       'supports_credentials': True,
       'allow_headers': ['*'],
       'resources': ['*'],
-      'origins': ['http://localhost:8088']
+      'origins': ['http://localhost:8088', 'http://superset.local']
     }
+
     # Define SQLALCHEMY_DATABASE_URI
     SQLALCHEMY_DATABASE_URI = f"postgresql+psycopg2://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASS')}@{os.environ.get('DB_HOST')}:{os.environ.get('DB_PORT')}/{os.environ.get('DB_NAME')}"
+
+    # --- Important for ingress/proxy ---
+    ENABLE_PROXY_FIX = True
+
+    # CSRF handling (needed for login behind ingress)
+    WTF_CSRF_ENABLED = True
+    WTF_CSRF_EXEMPT_LIST = []
+    WTF_CSRF_ALLOWED_ORIGINS = ["http://superset.local", "http://localhost:8088"]
+
+    # Cookie/session handling
+    SESSION_COOKIE_SAMESITE = None
+    SESSION_COOKIE_SECURE = False
 
 # Global service account for Azure Workload Identity
 serviceAccountName: "superset-workload-identity"
