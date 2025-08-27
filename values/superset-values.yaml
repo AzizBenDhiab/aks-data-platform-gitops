@@ -51,17 +51,6 @@ postgresql:
         cpu: 250m
     podLabels:
       azure.workload.identity/use: "true"
-    extraVolumes:
-    - name: secrets-store
-      csi:
-        driver: secrets-store.csi.k8s.io
-        readOnly: true
-        volumeAttributes:
-          secretProviderClass: "superset-secrets"
-    extraVolumeMounts:
-    - name: secrets-store
-      mountPath: "/mnt/secrets-store"
-      readOnly: true
 
 # Redis configuration
 redis:
