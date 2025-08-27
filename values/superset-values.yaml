@@ -168,6 +168,7 @@ init:
   - -c
   - |
     # Set environment variables
+    export DB_PASS=$(cat /mnt/secrets-store/superset-postgres-password)
     export SUPERSET_ADMIN_PASSWORD=$(cat /mnt/secrets-store/superset-admin-password)
     # Run init
     . {{ .Values.configMountPath }}/superset_bootstrap.sh; superset init
