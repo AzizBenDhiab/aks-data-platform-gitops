@@ -20,7 +20,7 @@ spec:
             # Use existing secret from Key Vault instead of hardcoded password
             admin:
               existingSecret: "monitoring-secrets"
-              userKey: admin
+              userKey: grafana-password
               passwordKey: grafana-password
             persistence:
               enabled: true
