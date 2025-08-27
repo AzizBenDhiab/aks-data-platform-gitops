@@ -99,26 +99,26 @@ extraVolumeMounts:
   mountPath: "/mnt/secrets-store"
   readOnly: true
 
-# Global environment variables
-extraEnv:
-  SUPERSET_SECRET_KEY:
-    valueFrom:
-      secretKeyRef:
-        name: superset-secrets
-        key: secret-key
-  DB_USER:
-    value: "superset"
-  DB_HOST:
-    value: "apache-superset-postgresql"
-  DB_PORT:
-    value: "5432"
-  DB_NAME:
-    value: "superset"
-  DB_PASS:
-    valueFrom:
-      secretKeyRef:
-        name: superset-secrets
-        key: postgres-password
+# Global environment variables (using extraEnvRaw for all)
+extraEnvRaw:
+- name: SUPERSET_SECRET_KEY
+  valueFrom:
+    secretKeyRef:
+      name: superset-secrets
+      key: secret-key
+- name: DB_USER
+  value: "superset"
+- name: DB_HOST
+  value: "apache-superset-postgresql"
+- name: DB_PORT
+  value: "5432"
+- name: DB_NAME
+  value: "superset"
+- name: DB_PASS
+  valueFrom:
+    secretKeyRef:
+      name: superset-secrets
+      key: postgres-password
 
 # Superset Node configuration
 supersetNode:
@@ -137,7 +137,11 @@ supersetNode:
   - -c
   - |
     # Debug environment variables
+    echo "DB_USER: $DB_USER"
     echo "DB_PASS: $DB_PASS"
+    echo "DB_HOST: $DB_HOST"
+    echo "DB_PORT: $DB_PORT"
+    echo "DB_NAME: $DB_NAME"
     # Start Superset
     . {{ .Values.configMountPath }}/superset_bootstrap.sh; gunicorn --bind "0.0.0.0:{{ .Values.service.port }}" --access-logfile '-' --error-logfile '-' --workers 1 --worker-class gthread --threads 20 --timeout 60 --keep-alive 2 --max-requests 1000 --max-requests-jitter 100 --preload "superset.app:create_app()"
 
@@ -153,20 +157,20 @@ supersetWorker:
     requests:
       memory: 256Mi
       cpu: 125m
-  extraEnv:
-    DB_USER:
-      value: "superset"
-    DB_HOST:
-      value: "apache-superset-postgresql"
-    DB_PORT:
-      value: "5432"
-    DB_NAME:
-      value: "superset"
-    DB_PASS:
-      valueFrom:
-        secretKeyRef:
-          name: superset-secrets
-          key: postgres-password
+  extraEnvRaw:
+  - name: DB_USER
+    value: "superset"
+  - name: DB_HOST
+    value: "apache-superset-postgresql"
+  - name: DB_PORT
+    value: "5432"
+  - name: DB_NAME
+    value: "superset"
+  - name: DB_PASS
+    valueFrom:
+      secretKeyRef:
+        name: superset-secrets
+        key: postgres-password
 
 # Disable Celery Beat
 supersetCeleryBeat:
@@ -183,12 +187,12 @@ init:
     email: admin@example.com
   podLabels:
     azure.workload.identity/use: "true"
-  extraEnv:
-    SUPERSET_ADMIN_PASSWORD:
-      valueFrom:
-        secretKeyRef:
-          name: superset-secrets
-          key: admin-password
+  extraEnvRaw:
+  - name: SUPERSET_ADMIN_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: superset-secrets
+        key: admin-password
 
 service:
   type: ClusterIP
