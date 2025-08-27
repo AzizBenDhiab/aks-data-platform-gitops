@@ -28,7 +28,6 @@ postgresql:
     database: "superset"
     username: "superset"
   
-  # ✅ CRITICAL: Configure PostgreSQL to use workload identity
   serviceAccount:
     create: false
     name: "superset-workload-identity"
@@ -39,11 +38,9 @@ postgresql:
       size: 10Gi
       storageClass: "managed-csi"
     
-    # ✅ Add workload identity label to PostgreSQL pods
     podLabels:
       azure.workload.identity/use: "true"
     
-    # ✅ Add CSI volume for secret mounting to PostgreSQL
     extraVolumes:
     - name: secrets-store
       csi:
@@ -85,6 +82,9 @@ redis:
 # Superset Node configuration with workload identity
 supersetNode:
   replicaCount: 1
+  serviceAccount:
+    create: false
+    name: "superset-workload-identity"
   podLabels:
     azure.workload.identity/use: "true"
   extraVolumes:
@@ -115,6 +115,9 @@ supersetNode:
 # Superset Worker configuration
 supersetWorker:
   replicaCount: 1
+  serviceAccount:
+    create: false
+    name: "superset-workload-identity"
   podLabels:
     azure.workload.identity/use: "true"
   extraVolumes:
@@ -148,6 +151,11 @@ supersetCeleryBeat:
 
 # Initial setup with admin password from secret
 init:
+  serviceAccount:
+    create: false
+    name: "superset-workload-identity"
+  podLabels:
+    azure.workload.identity/use: "true"
   loadExamples: true
   createAdmin: true
   adminUser:
@@ -161,6 +169,17 @@ init:
         secretKeyRef:
           name: superset-secrets
           key: admin-password
+  extraVolumes:
+  - name: secrets-store
+    csi:
+      driver: secrets-store.csi.k8s.io
+      readOnly: true
+      volumeAttributes:
+        secretProviderClass: "superset-secrets"
+  extraVolumeMounts:
+  - name: secrets-store
+    mountPath: "/mnt/secrets-store"
+    readOnly: true
 
 service:
   type: ClusterIP
