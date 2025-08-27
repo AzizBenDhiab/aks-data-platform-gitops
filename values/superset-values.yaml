@@ -91,16 +91,10 @@ extraVolumes:
     readOnly: true
     volumeAttributes:
       secretProviderClass: "superset-secrets"
-- name: datasources-config
-  configMap:
-    name: superset-datasources-config
 
 extraVolumeMounts:
 - name: secrets-store
   mountPath: "/mnt/secrets-store"
-  readOnly: true
-- name: datasources-config
-  mountPath: "/app/configs"
   readOnly: true
 
 # Extra configs for datasources
