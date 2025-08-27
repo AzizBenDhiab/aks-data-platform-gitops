@@ -193,4 +193,5 @@ bootstrapScript: |
   pip install --no-cache-dir \
     psycopg2-binary \
     redis \
-    flask-cors
+    flask-cors \
+    gevent
