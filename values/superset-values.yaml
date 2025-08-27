@@ -178,7 +178,6 @@ init:
                       --password "$SUPERSET_ADMIN_PASSWORD" \
                       || true
       echo "Updating admin user..."
-      echo "Admin password is: [$SUPERSET_ADMIN_PASSWORD]"
       superset fab reset-password --username admin --password "$SUPERSET_ADMIN_PASSWORD"  
 
       echo "Loading examples..."
