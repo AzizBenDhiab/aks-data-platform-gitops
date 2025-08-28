@@ -17,9 +17,11 @@ spec:
           # Grafana Configuration with Azure Key Vault
           grafana:
             enabled: true
+            # Hardcoded admin username
+            adminUser: admin
             admin:
               existingSecret: "monitoring-secrets"
-              passwordKey: grafana-password
+              passwordKey: admin-password
             persistence:
               enabled: true
               size: 10Gi
