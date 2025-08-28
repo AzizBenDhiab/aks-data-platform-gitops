@@ -17,8 +17,6 @@ spec:
           # Grafana Configuration with Azure Key Vault
           grafana:
             enabled: true
-            # Hardcode admin username and get password from Key Vault
-            adminUser: admin
             admin:
               existingSecret: "monitoring-secrets"
               passwordKey: grafana-password
