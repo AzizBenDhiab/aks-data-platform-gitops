@@ -76,6 +76,22 @@ spec:
               secretKeyRef:
                 name: nifi-secrets
                 key: truststore-password
+          # Azure configuration from ConfigMap
+          - name: AZURE_CLIENT_ID
+            valueFrom:
+              configMapKeyRef:
+                name: azure-config
+                key: AZURE_CLIENT_ID
+          - name: AZURE_TENANT_ID
+            valueFrom:
+              configMapKeyRef:
+                name: azure-config
+                key: AZURE_TENANT_ID
+          - name: AZURE_KEYVAULT_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: azure-config
+                key: AZURE_KEYVAULT_NAME
 
         # DYNAMIC AUTHENTICATION: Init container to override chart's authentication
         initContainers:

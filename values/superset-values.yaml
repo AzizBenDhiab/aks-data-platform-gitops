@@ -36,6 +36,24 @@ serviceAccountName: "superset-workload-identity"
 serviceAccount:
   create: false
 
+# Environment variables from ConfigMap for Azure configuration
+extraEnv:
+  - name: AZURE_CLIENT_ID
+    valueFrom:
+      configMapKeyRef:
+        name: azure-config
+        key: AZURE_CLIENT_ID
+  - name: AZURE_TENANT_ID
+    valueFrom:
+      configMapKeyRef:
+        name: azure-config
+        key: AZURE_TENANT_ID
+  - name: AZURE_KEYVAULT_NAME
+    valueFrom:
+      configMapKeyRef:
+        name: azure-config
+        key: AZURE_KEYVAULT_NAME
+
 # PostgreSQL configuration
 postgresql:
   enabled: true

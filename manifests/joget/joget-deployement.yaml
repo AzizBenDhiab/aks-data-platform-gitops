@@ -27,7 +27,8 @@ metadata:
   name: joget-workload-identity  # ✅ Renamed from "joget" to follow convention
   namespace: joget
   annotations:
-    azure.workload.identity/client-id: "__AZURE_CLIENT_ID__" # "__AZURE_CLIENT_ID__" 
+    # Note: The client-id will be set by the deployment pipeline via kubectl patch
+    # This ensures the ServiceAccount gets the correct client ID at deployment time 
   labels:
     azure.workload.identity/use: "true"  
 ---
@@ -66,9 +67,9 @@ spec:
   provider: azure
   parameters:
     usePodIdentity: "false"
-    useVMManagedIdentity: "false"
-    clientID: "__AZURE_CLIENT_ID__" # "__AZURE_CLIENT_ID__"
-    keyvaultName: "__AZURE_KEYVAULT_NAME__" # "__AZURE_KEYVAULT_NAME__"
+    useVMManagedIdentity: "true"
+    # The CSI driver will automatically use the workload identity
+    # clientID, tenantId, and keyvaultName are provided via environment variables
     cloudName: ""
     objects: |
       array:
@@ -84,7 +85,6 @@ spec:
           objectName: joget-admin-password
           objectType: secret
           objectVersion: ""
-    tenantId: "__AZURE_TENANT_ID__" # "__AZURE_TENANT_ID__"
   secretObjects:
   - secretName: joget-secrets
     type: Opaque
@@ -245,6 +245,22 @@ spec:
                   fieldPath: metadata.namespace
             - name: KUBERNETES_LABELS
               value: "app=joget-dx8-tomcat9"
+            # Azure configuration from ConfigMap
+            - name: AZURE_CLIENT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: azure-config
+                  key: AZURE_CLIENT_ID
+            - name: AZURE_TENANT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: azure-config
+                  key: AZURE_TENANT_ID
+            - name: AZURE_KEYVAULT_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: azure-config
+                  key: AZURE_KEYVAULT_NAME
             # Enable clustering + SECURITY DISABLED VIA JAVA OPTS
             - name: CATALINA_OPTS
               value: "-Djoget.cluster.enabled=true -Dtomcat.clustering.enabled=true -Dsecurity.csrf.disabled=true -Dsetup.security.disabled=true -Dwflow.disable.csrf=true -Djoget.setup.bypass.security=true"

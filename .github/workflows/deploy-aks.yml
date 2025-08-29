@@ -236,8 +236,8 @@ jobs:
 
           echo "All secrets have been stored in Key Vault: $KEYVAULT_NAME"
 
-  update-repository-placeholders:
-    name: "Update Repository Placeholders"
+  setup-argocd:
+    name: "Setup ArgoCD"
     runs-on: ubuntu-latest
     needs: [terraform, generate-keyvault-secrets]
     if: success()
@@ -245,52 +245,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update Placeholders in Repository Files
-        run: |
-          # Get values from terraform outputs
-          KEYVAULT_NAME="${{ needs.terraform.outputs.keyvault_name }}"
-          AZURE_CLIENT_ID="${{ needs.terraform.outputs.azure_client_id }}"
-          AZURE_TENANT_ID="${{ needs.terraform.outputs.azure_tenant_id }}"
-
-          echo "Updating placeholders with:"
-          echo "KEYVAULT_NAME: $KEYVAULT_NAME"
-          echo "AZURE_CLIENT_ID: $AZURE_CLIENT_ID"
-          echo "AZURE_TENANT_ID: $AZURE_TENANT_ID"
-
-          # Find and replace placeholders in all files
-          find . -type f \( -name "*.yaml" -o -name "*.yml" -o -name "*.json" -o -name "*.sh" \) -not -path "./.git/*" -exec grep -l "__AZURE_KEYVAULT_NAME__\|__AZURE_CLIENT_ID__\|__AZURE_TENANT_ID__" {} \; | while read file; do
-            echo "Updating file: $file"
-            sed -i "s/__AZURE_KEYVAULT_NAME__/$KEYVAULT_NAME/g" "$file"
-            sed -i "s/__AZURE_CLIENT_ID__/$AZURE_CLIENT_ID/g" "$file"
-            sed -i "s/__AZURE_TENANT_ID__/$AZURE_TENANT_ID/g" "$file"
-          done
-
-      - name: Commit and Push Changes
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add .
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Update Azure placeholders with deployment values"
-            git push
-          fi
-
-  setup-argocd:
-    name: "Setup ArgoCD"
-    runs-on: ubuntu-latest
-    needs: [terraform, update-repository-placeholders]
-    if: success()
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: main # Use updated main branch with placeholders replaced
 
       - name: Azure Login (OIDC)
         uses: azure/login@v2
@@ -305,6 +259,91 @@ jobs:
             --resource-group ${{ needs.terraform.outputs.resource_group }} \
             --name ${{ needs.terraform.outputs.cluster_name }} \
             --overwrite-existing
+
+      - name: Create Configuration ConfigMaps
+        run: |
+          # Get values from terraform outputs
+          KEYVAULT_NAME="${{ needs.terraform.outputs.keyvault_name }}"
+          AZURE_CLIENT_ID="${{ needs.terraform.outputs.azure_client_id }}"
+          AZURE_TENANT_ID="${{ needs.terraform.outputs.azure_tenant_id }}"
+
+          # Create ConfigMaps for each namespace that needs Azure configuration
+          namespaces=("superset" "nifi-prod" "monitoring" "kobotoolbox" "postgresql" "joget")
+
+          for ns in "${namespaces[@]}"; do
+            echo "Creating ConfigMap for namespace: $ns"
+            
+            # Create namespace if it doesn't exist
+            kubectl create namespace $ns --dry-run=client -o yaml | kubectl apply -f -
+            
+            # Create ConfigMap with Azure configuration
+            kubectl create configmap azure-config \
+              --from-literal=AZURE_KEYVAULT_NAME=$KEYVAULT_NAME \
+              --from-literal=AZURE_CLIENT_ID=$AZURE_CLIENT_ID \
+              --from-literal=AZURE_TENANT_ID=$AZURE_TENANT_ID \
+              --namespace=$ns \
+              --dry-run=client -o yaml | kubectl apply -f -
+          done
+
+          echo "ConfigMaps created successfully"
+
+      - name: Patch ServiceAccounts with Workload Identity
+        run: |
+          # Get Azure Client ID from terraform outputs
+          AZURE_CLIENT_ID="${{ needs.terraform.outputs.azure_client_id }}"
+          
+          echo "Patching ServiceAccounts with Azure Client ID: $AZURE_CLIENT_ID"
+          
+          # Patch each ServiceAccount with the correct client ID annotation
+          kubectl patch serviceaccount superset-workload-identity -n superset -p "{\"metadata\":{\"annotations\":{\"azure.workload.identity/client-id\":\"$AZURE_CLIENT_ID\"}}}"
+          kubectl patch serviceaccount nifi-workload-identity -n nifi-prod -p "{\"metadata\":{\"annotations\":{\"azure.workload.identity/client-id\":\"$AZURE_CLIENT_ID\"}}}"
+          kubectl patch serviceaccount kobotoolbox-workload-identity -n kobotoolbox -p "{\"metadata\":{\"annotations\":{\"azure.workload.identity/client-id\":\"$AZURE_CLIENT_ID\"}}}"
+          kubectl patch serviceaccount postgresql-workload-identity -n joget -p "{\"metadata\":{\"annotations\":{\"azure.workload.identity/client-id\":\"$AZURE_CLIENT_ID\"}}}"
+          kubectl patch serviceaccount monitoring-workload-identity -n monitoring -p "{\"metadata\":{\"annotations\":{\"azure.workload.identity/client-id\":\"$AZURE_CLIENT_ID\"}}}"
+          kubectl patch serviceaccount joget-workload-identity -n joget -p "{\"metadata\":{\"annotations\":{\"azure.workload.identity/client-id\":\"$AZURE_CLIENT_ID\"}}}"
+          
+          echo "All ServiceAccounts patched successfully"
+
+      - name: Apply SecretProviderClass Manifests with Azure Parameters
+        run: |
+          # Get Azure parameters from terraform outputs
+          AZURE_CLIENT_ID="${{ needs.terraform.outputs.azure_client_id }}"
+          AZURE_TENANT_ID="${{ needs.terraform.outputs.azure_tenant_id }}"
+          KEYVAULT_NAME="${{ needs.terraform.outputs.keyvault_name }}"
+          
+          echo "Updating SecretProviderClass manifests with Azure parameters..."
+          
+          # Create temporary directory for updated manifests
+          mkdir -p /tmp/updated-manifests
+          
+          # Function to update SecretProviderClass files
+          update_secret_provider_class() {
+            local file=$1
+            local namespace=$2
+            
+            # Create updated manifest with Azure parameters
+            sed "s/useVMManagedIdentity: \"true\"/clientID: \"$AZURE_CLIENT_ID\"\n    tenantId: \"$AZURE_TENANT_ID\"\n    keyvaultName: \"$KEYVAULT_NAME\"\n    useVMManagedIdentity: \"true\"/" $file > /tmp/updated-manifests/$(basename $file)
+            
+            echo "Applying SecretProviderClass for namespace: $namespace"
+            kubectl apply -f /tmp/updated-manifests/$(basename $file) -n $namespace
+          }
+          
+          # Update and apply each SecretProviderClass
+          update_secret_provider_class "manifests/superset/secret-provider-class.yaml" "superset"
+          update_secret_provider_class "manifests/nifi/secret-provider-class.yaml" "nifi-prod"
+          update_secret_provider_class "manifests/kobotoolbox/secret-provider-class.yaml" "kobotoolbox"
+          update_secret_provider_class "manifests/postgresql/secret-provider-class.yaml" "joget"
+          update_secret_provider_class "manifests/monitoring/secret-provider-class.yaml" "monitoring"
+          
+          # Handle Joget deployment with embedded SecretProviderClass
+          echo "Updating and applying Joget deployment with SecretProviderClass..."
+          sed "s/useVMManagedIdentity: \"true\"/clientID: \"$AZURE_CLIENT_ID\"\n        tenantId: \"$AZURE_TENANT_ID\"\n        keyvaultName: \"$KEYVAULT_NAME\"\n        useVMManagedIdentity: \"true\"/" manifests/joget/joget-deployement.yaml > /tmp/updated-manifests/joget-deployement.yaml
+          kubectl apply -f /tmp/updated-manifests/joget-deployement.yaml -n joget
+          
+          echo "All SecretProviderClass manifests applied successfully"
+          
+          # Clean up temporary files
+          rm -rf /tmp/updated-manifests
 
       - name: Install ArgoCD
         run: |

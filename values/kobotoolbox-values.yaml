@@ -8,6 +8,22 @@ shared:
   sidecarContainers: []
   extraEnv:
     BACKUPS_DIR: /srv/backups
+    # Azure configuration from ConfigMap
+    AZURE_CLIENT_ID:
+      valueFrom:
+        configMapKeyRef:
+          name: azure-config
+          key: AZURE_CLIENT_ID
+    AZURE_TENANT_ID:
+      valueFrom:
+        configMapKeyRef:
+          name: azure-config
+          key: AZURE_TENANT_ID
+    AZURE_KEYVAULT_NAME:
+      valueFrom:
+        configMapKeyRef:
+          name: azure-config
+          key: AZURE_KEYVAULT_NAME
   extraSecretEnv: {}
 
 # KPI specific environment variables (if needed beyond defaults)
