@@ -40,8 +40,7 @@ output "cluster_name" {
 
 output "resource_group_name" {
   description = "The name of the resource group"
-  value       = azurerm_resource_group.main.name
-  # Note: Replace 'main' with your actual resource group resource name
+  value       = azurerm_resource_group.aks_rg.name
 }
 
 output "azure_client_id" {

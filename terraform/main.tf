@@ -162,6 +162,15 @@ resource "azurerm_federated_identity_credential" "kobotoolbox_federated_credenti
   subject             = "system:serviceaccount:kobotoolbox:kobotoolbox-workload-identity"
 }
 
+resource "azurerm_federated_identity_credential" "monitoring_federated_credential" {
+  name                = "${var.cluster_name}-monitoring-federated-credential"
+  resource_group_name = azurerm_resource_group.aks_rg.name
+  audience            = ["api://AzureADTokenExchange"]
+  issuer              = azurerm_kubernetes_cluster.aks.oidc_issuer_url
+  parent_id           = azurerm_user_assigned_identity.keyvault_identity.id
+  subject             = "system:serviceaccount:monitoring:monitoring-workload-identity"
+}
+
 # Example secret in Key Vault
 resource "azurerm_key_vault_secret" "example_secret" {
   name         = "example-secret"

@@ -11,6 +11,12 @@ terraform {
       version = "~> 3.1"
     }
   }
+  
+  backend "azurerm" {
+    # Backend configuration will be provided via command line
+    # resource_group_name, storage_account_name, container_name, and key
+    # are set during terraform init in the pipeline
+  }
 }
 
 provider "azurerm" {

@@ -45,3 +45,9 @@ variable "workload_identity_service_account" {
   description = "Kubernetes service account name for workload identity"
   default     = "workload-identity-sa"
 }
+
+variable "environment" {
+  type        = string
+  description = "Environment name (dev, staging, prod)"
+  default     = "dev"
+}
