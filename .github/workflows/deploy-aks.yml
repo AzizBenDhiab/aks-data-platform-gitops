@@ -10,8 +10,8 @@ on:
   #     - ".github/workflows/**"
   #     - "manifests/**"
   #     - "values/**"
-  pull_request:
-    branches: [main]
+  # pull_request:
+  #   branches: [main]
   workflow_dispatch:
     inputs:
       environment:
@@ -48,11 +48,6 @@ on:
         required: true
         default: "2"
         type: string
-      subscription_id:
-        description: "Azure Subscription ID"
-        required: true
-        default: "a6de3cd4-15d9-4c7f-87ac-9a4399b01e45"
-        type: string
       workload_identity_namespace:
         description: "Workload Identity Namespace"
         required: true
@@ -83,7 +78,7 @@ permissions:
 env:
   # Remove ARM_CLIENT_SECRET - not needed for OIDC
   ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-  ARM_SUBSCRIPTION_ID: ${{ github.event.inputs.subscription_id || secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
   ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   ARM_USE_OIDC: true
   TF_VAR_environment: ${{ github.event.inputs.environment || 'dev' }}
