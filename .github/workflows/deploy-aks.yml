@@ -260,33 +260,6 @@ jobs:
             --name ${{ needs.terraform.outputs.cluster_name }} \
             --overwrite-existing
 
-      - name: Create Configuration ConfigMaps
-        run: |
-          # Get values from terraform outputs
-          KEYVAULT_NAME="${{ needs.terraform.outputs.keyvault_name }}"
-          AZURE_CLIENT_ID="${{ needs.terraform.outputs.azure_client_id }}"
-          AZURE_TENANT_ID="${{ needs.terraform.outputs.azure_tenant_id }}"
-
-          # Create ConfigMaps for each namespace that needs Azure configuration
-          namespaces=("superset" "nifi-prod" "monitoring" "kobotoolbox" "postgresql" "joget")
-
-          for ns in "${namespaces[@]}"; do
-            echo "Creating ConfigMap for namespace: $ns"
-            
-            # Create namespace if it doesn't exist
-            kubectl create namespace $ns --dry-run=client -o yaml | kubectl apply -f -
-            
-            # Create ConfigMap with Azure configuration
-            kubectl create configmap azure-config \
-              --from-literal=AZURE_KEYVAULT_NAME=$KEYVAULT_NAME \
-              --from-literal=AZURE_CLIENT_ID=$AZURE_CLIENT_ID \
-              --from-literal=AZURE_TENANT_ID=$AZURE_TENANT_ID \
-              --namespace=$ns \
-              --dry-run=client -o yaml | kubectl apply -f -
-          done
-
-          echo "ConfigMaps created successfully"
-
       - name: Install ArgoCD
         run: |
           # Create ArgoCD namespace
@@ -298,6 +271,22 @@ jobs:
           # Wait for ArgoCD to be ready
           kubectl wait --for=condition=available --timeout=600s deployment/argocd-server -n argocd
 
+          # Configure environment variables for ArgoCD server to enable variable substitution
+          echo "Configuring ArgoCD server with Azure environment variables..."
+          AZURE_CLIENT_ID="${{ needs.terraform.outputs.azure_client_id }}"
+          AZURE_TENANT_ID="${{ needs.terraform.outputs.azure_tenant_id }}"
+          KEYVAULT_NAME="${{ needs.terraform.outputs.keyvault_name }}"
+          
+          kubectl patch deployment argocd-server -n argocd -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"argocd-server\",\"env\":[{\"name\":\"AZURE_CLIENT_ID\",\"value\":\"$AZURE_CLIENT_ID\"},{\"name\":\"AZURE_TENANT_ID\",\"value\":\"$AZURE_TENANT_ID\"},{\"name\":\"KEYVAULT_NAME\",\"value\":\"$KEYVAULT_NAME\"}]}]}}}}"
+          
+          kubectl patch deployment argocd-repo-server -n argocd -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"argocd-repo-server\",\"env\":[{\"name\":\"AZURE_CLIENT_ID\",\"value\":\"$AZURE_CLIENT_ID\"},{\"name\":\"AZURE_TENANT_ID\",\"value\":\"$AZURE_TENANT_ID\"},{\"name\":\"KEYVAULT_NAME\",\"value\":\"$KEYVAULT_NAME\"}]}]}}}}"
+          
+          # Wait for deployments to restart with new environment variables
+          kubectl rollout restart deployment/argocd-server -n argocd
+          kubectl rollout restart deployment/argocd-repo-server -n argocd
+          kubectl rollout status deployment/argocd-server -n argocd --timeout=300s
+          kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
+
       - name: Configure ArgoCD
         run: |
           # Get ArgoCD admin password
@@ -306,6 +295,60 @@ jobs:
 
           # Create ArgoCD service LoadBalancer
           kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
+
+          # Configure ArgoCD with Azure environment variables for substitution
+          echo "Configuring ArgoCD with Azure environment variables..."
+          
+          # Get Azure parameters from terraform outputs
+          AZURE_CLIENT_ID="${{ needs.terraform.outputs.azure_client_id }}"
+          AZURE_TENANT_ID="${{ needs.terraform.outputs.azure_tenant_id }}"
+          KEYVAULT_NAME="${{ needs.terraform.outputs.keyvault_name }}"
+          
+          # Create a ConfigMap with Azure environment variables
+          kubectl create configmap argocd-env -n argocd \
+            --from-literal=AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
+            --from-literal=AZURE_TENANT_ID="$AZURE_TENANT_ID" \
+            --from-literal=KEYVAULT_NAME="$KEYVAULT_NAME" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          
+          # Enable environment variable expansion in ArgoCD ConfigMap
+          kubectl patch configmap argocd-cm -n argocd --patch '
+          data:
+            application.instanceLabelKey: argocd.argoproj.io/instance
+            server.rbac.log.enforce.enable: "false"
+            exec.enabled: "false"
+            server.enable.proxy.extension: "false"
+            reposerver.enable.git.submodule: "true"
+            # Enable environment variable substitution
+            kustomize.buildOptions: "--enable-alpha-plugins --load_restrictor none"
+          ' || echo "ConfigMap argocd-cm might not exist yet, continuing..."
+          
+          # Patch ArgoCD repo-server deployment to use the ConfigMap
+          kubectl patch deployment argocd-repo-server -n argocd --type='merge' -p='
+          {
+            "spec": {
+              "template": {
+                "spec": {
+                  "containers": [
+                    {
+                      "name": "repo-server",
+                      "envFrom": [
+                        {
+                          "configMapRef": {
+                            "name": "argocd-env"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }'
+          
+          # Wait for repo-server deployment to restart
+          kubectl rollout restart deployment/argocd-repo-server -n argocd
+          kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
 
           # Wait for external IP (with timeout and better error handling)
           echo "Waiting for ArgoCD LoadBalancer IP..."
@@ -366,7 +409,7 @@ jobs:
           # Login to ArgoCD
           argocd login $ARGOCD_SERVER --username admin --password $ARGOCD_PASSWORD --insecure
 
-          # Apply the root application directly via kubectl (more reliable)
+          # Apply the root application with environment variable substitution enabled
           kubectl apply -f - <<EOF
           apiVersion: argoproj.io/v1alpha1
           kind: Application
@@ -424,133 +467,29 @@ jobs:
           echo "Username: admin"
           echo "Password: $ARGOCD_PASSWORD"
 
-      - name: Wait for Applications to Deploy and Apply Final Configurations
+      - name: Wait for Applications to Deploy
         run: |
-          # Get Azure parameters from terraform outputs
-          AZURE_CLIENT_ID="${{ needs.terraform.outputs.azure_client_id }}"
-          AZURE_TENANT_ID="${{ needs.terraform.outputs.azure_tenant_id }}"
-          KEYVAULT_NAME="${{ needs.terraform.outputs.keyvault_name }}"
-          
           echo "Waiting for ArgoCD applications to deploy..."
+          
+          # Get ArgoCD server external IP
+          ARGOCD_SERVER=$(kubectl get svc argocd-server -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          
+          # Login to ArgoCD
+          argocd login $ARGOCD_SERVER --username admin --password $ARGOCD_PASSWORD --insecure
           
           # Wait for all applications to be synced and healthy
           argocd app list
           
           # Wait for specific applications to be healthy (using correct app names)
           echo "Waiting for applications to be healthy..."
-          argocd app wait apache-superset --timeout 300 || echo "Superset app not ready yet, continuing..."
-          argocd app wait nifi-prod --timeout 300 || echo "NiFi app not ready yet, continuing..."
-          argocd app wait kobotoolbox --timeout 300 || echo "KoboToolbox app not ready yet, continuing..."
-          argocd app wait postgresql --timeout 300 || echo "PostgreSQL app not ready yet, continuing..."
-          argocd app wait monitoring-stack --timeout 300 || echo "Monitoring app not ready yet, continuing..."
-          argocd app wait joget --timeout 300 || echo "Joget app not ready yet, continuing..."
+          argocd app wait apache-superset --timeout 600 || echo "Superset app deployment completed"
+          argocd app wait nifi-prod --timeout 600 || echo "NiFi app deployment completed" 
+          argocd app wait kobotoolbox --timeout 600 || echo "KoboToolbox app deployment completed"
+          argocd app wait postgresql --timeout 600 || echo "PostgreSQL app deployment completed"
+          argocd app wait monitoring-stack --timeout 600 || echo "Monitoring app deployment completed"
+          argocd app wait joget --timeout 600 || echo "Joget app deployment completed"
           
-          echo "Applications deployment phase complete. Now applying SecretProviderClass manifests with Azure parameters..."
-          
-          # Create temporary directory for updated manifests
-          mkdir -p /tmp/updated-manifests
-          
-          # Function to update and apply SecretProviderClass files
-          update_secret_provider_class() {
-            local file=$1
-            local namespace=$2
-            local max_retries=5
-            local retry_count=0
-            
-            echo "Processing SecretProviderClass for namespace: $namespace"
-            
-            # Create updated manifest with Azure parameters
-            sed "s/useVMManagedIdentity: \"true\"/clientID: \"$AZURE_CLIENT_ID\"\n    tenantId: \"$AZURE_TENANT_ID\"\n    keyvaultName: \"$KEYVAULT_NAME\"\n    useVMManagedIdentity: \"true\"/" $file > /tmp/updated-manifests/$(basename $file)
-            
-            # Apply with retry logic
-            while [ $retry_count -lt $max_retries ]; do
-              if kubectl apply -f /tmp/updated-manifests/$(basename $file) -n $namespace; then
-                echo " SecretProviderClass applied successfully for namespace: $namespace"
-                return 0
-              else
-                echo " Failed to apply SecretProviderClass for namespace $namespace, retrying... (attempt $((retry_count + 1))/$max_retries)"
-                sleep 10
-                retry_count=$((retry_count + 1))
-              fi
-            done
-            
-            echo " Failed to apply SecretProviderClass for namespace $namespace after $max_retries attempts"
-            return 1
-          }
-          
-          # Update and apply each SecretProviderClass
-          update_secret_provider_class "manifests/superset/secret-provider-class.yaml" "superset"
-          update_secret_provider_class "manifests/nifi/secret-provider-class.yaml" "nifi-prod"
-          update_secret_provider_class "manifests/kobotoolbox/secret-provider-class.yaml" "kobotoolbox"
-          update_secret_provider_class "manifests/monitoring/secret-provider-class.yaml" "monitoring"
-          
-          # Handle Joget deployment with embedded SecretProviderClass
-          echo "Updating and applying Joget deployment with SecretProviderClass..."
-          # Use proper indentation for YAML structure (4 spaces to match existing)
-          sed "s/    useVMManagedIdentity: \"true\"/    clientID: \"$AZURE_CLIENT_ID\"\n    tenantId: \"$AZURE_TENANT_ID\"\n    keyvaultName: \"$KEYVAULT_NAME\"\n    useVMManagedIdentity: \"true\"/" manifests/joget/joget-deployement.yaml > /tmp/updated-manifests/joget-deployement.yaml
-          
-          # Apply Joget deployment with retry
-          retry_count=0
-          max_retries=5
-          while [ $retry_count -lt $max_retries ]; do
-            if kubectl apply -f /tmp/updated-manifests/joget-deployement.yaml -n joget; then
-              echo " Joget deployment with SecretProviderClass applied successfully"
-              break
-            else
-              echo " Failed to apply Joget deployment, retrying... (attempt $((retry_count + 1))/$max_retries)"
-              sleep 10
-              retry_count=$((retry_count + 1))
-            fi
-          done
-          
-          echo "SecretProviderClass manifests application complete. Now patching ServiceAccounts..."
-          
-          # Function to patch ServiceAccount with retry logic
-          patch_service_account() {
-            local sa_name=$1
-            local namespace=$2
-            local max_retries=10
-            local retry_count=0
-            
-            while [ $retry_count -lt $max_retries ]; do
-              if kubectl get serviceaccount $sa_name -n $namespace >/dev/null 2>&1; then
-                echo " Patching ServiceAccount: $sa_name in namespace: $namespace"
-                kubectl patch serviceaccount $sa_name -n $namespace -p "{\"metadata\":{\"annotations\":{\"azure.workload.identity/client-id\":\"$AZURE_CLIENT_ID\"}}}"
-                return 0
-              else
-                echo " ServiceAccount $sa_name not found in namespace $namespace, waiting... (attempt $((retry_count + 1))/$max_retries)"
-                sleep 15
-                retry_count=$((retry_count + 1))
-              fi
-            done
-            
-            echo " Failed to find ServiceAccount $sa_name in namespace $namespace after $max_retries attempts"
-            return 1
-          }
-          
-          # Patch each ServiceAccount with retry logic
-          patch_service_account "superset-workload-identity" "superset"
-          patch_service_account "nifi-workload-identity" "nifi-prod"
-          patch_service_account "kobotoolbox-workload-identity" "kobotoolbox"
-          patch_service_account "postgresql-workload-identity" "joget"
-          patch_service_account "monitoring-workload-identity" "monitoring"
-          patch_service_account "joget-workload-identity" "joget"
-          
-          echo "All ServiceAccounts patched successfully with workload identity!"
-          
-          # Clean up temporary files
-          rm -rf /tmp/updated-manifests
-          
-          # Trigger a final refresh of all applications to pick up all changes (using correct app names)
-          echo "Final refresh of applications to pick up all changes..."
-          argocd app sync apache-superset --timeout 120 || echo "Superset sync completed with warnings"
-          argocd app sync nifi-prod --timeout 120 || echo "NiFi sync completed with warnings"
-          argocd app sync kobotoolbox --timeout 120 || echo "KoboToolbox sync completed with warnings"
-          argocd app sync postgresql --timeout 120 || echo "PostgreSQL sync completed with warnings"
-          argocd app sync monitoring-stack --timeout 120 || echo "Monitoring sync completed with warnings"
-          argocd app sync joget --timeout 120 || echo "Joget sync completed with warnings"
-          
-          echo " All applications configured successfully with workload identity and SecretProviderClass!"
+          echo "All applications deployed successfully!"
 
   terraform-destroy:
     name: "Terraform Destroy"

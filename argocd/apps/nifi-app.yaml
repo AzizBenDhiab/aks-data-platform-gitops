@@ -319,7 +319,6 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - Prune=false:ConfigMap:azure-config
     retry:
       limit: 5
       backoff:

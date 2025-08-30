@@ -26,7 +26,6 @@ spec:
       - PrunePropagationPolicy=foreground
       - Replace=true
       - ApplyOutOfSyncOnly=true
-      - Prune=false:ConfigMap:azure-config
     retry:
       limit: 5
       backoff:

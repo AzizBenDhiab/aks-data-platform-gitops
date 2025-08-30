@@ -259,7 +259,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-      - Prune=false:ConfigMap:azure-config
     retry:
       limit: 5
       backoff:
