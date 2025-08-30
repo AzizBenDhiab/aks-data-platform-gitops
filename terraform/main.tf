@@ -171,11 +171,3 @@ resource "azurerm_federated_identity_credential" "monitoring_federated_credentia
   subject             = "system:serviceaccount:monitoring:monitoring-workload-identity"
 }
 
-# Example secret in Key Vault
-resource "azurerm_key_vault_secret" "example_secret" {
-  name         = "example-secret"
-  value        = "MyAKSExampleSecret"
-  key_vault_id = azurerm_key_vault.aks_keyvault.id
-
-  depends_on = [azurerm_role_assignment.keyvault_secrets_officer]
-}
