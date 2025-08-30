@@ -292,11 +292,26 @@ jobs:
             --from-literal=KEYVAULT_NAME="$KEYVAULT_NAME" \
             --dry-run=client -o yaml | kubectl apply -f -
           
+          # Enable environment variable substitution in ArgoCD
+          kubectl patch configmap argocd-cm -n argocd --type merge -p='
+          {
+            "data": {
+              "application.instanceLabelKey": "argocd.argoproj.io/instance"
+            }
+          }' || echo "ConfigMap argocd-cm might not exist yet, continuing..."
+          
           # Inject environment variables into ArgoCD repo-server for variable substitution
           kubectl set env deployment/argocd-repo-server -n argocd --from=configmap/argocd-env
           
+          # Force restart of repo-server to ensure environment variables are loaded
+          kubectl rollout restart deployment/argocd-repo-server -n argocd
+          
           # Wait for repo-server deployment to be ready with new environment variables
           kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
+          
+          # Verify environment variables are properly injected
+          echo "Verifying environment variables in repo-server..."
+          kubectl exec -n argocd deployment/argocd-repo-server -- env | grep -E "AZURE_CLIENT_ID|AZURE_TENANT_ID|KEYVAULT_NAME" || echo "Environment variables verification failed, but continuing..."
 
           # Wait for external IP
           echo "Waiting for ArgoCD LoadBalancer IP..."

@@ -66,7 +66,6 @@ spec:
   provider: azure
   parameters:
     usePodIdentity: "false"
-    useVMManagedIdentity: "true"
     clientID: "${AZURE_CLIENT_ID}"
     tenantId: "${AZURE_TENANT_ID}"
     keyvaultName: "${KEYVAULT_NAME}"
