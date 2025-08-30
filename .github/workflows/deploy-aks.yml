@@ -271,22 +271,6 @@ jobs:
           # Wait for ArgoCD to be ready
           kubectl wait --for=condition=available --timeout=600s deployment/argocd-server -n argocd
 
-          # Configure environment variables for ArgoCD server to enable variable substitution
-          echo "Configuring ArgoCD server with Azure environment variables..."
-          AZURE_CLIENT_ID="${{ needs.terraform.outputs.azure_client_id }}"
-          AZURE_TENANT_ID="${{ needs.terraform.outputs.azure_tenant_id }}"
-          KEYVAULT_NAME="${{ needs.terraform.outputs.keyvault_name }}"
-          
-          kubectl patch deployment argocd-server -n argocd -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"argocd-server\",\"env\":[{\"name\":\"AZURE_CLIENT_ID\",\"value\":\"$AZURE_CLIENT_ID\"},{\"name\":\"AZURE_TENANT_ID\",\"value\":\"$AZURE_TENANT_ID\"},{\"name\":\"KEYVAULT_NAME\",\"value\":\"$KEYVAULT_NAME\"}]}]}}}}"
-          
-          kubectl patch deployment argocd-repo-server -n argocd -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"argocd-repo-server\",\"env\":[{\"name\":\"AZURE_CLIENT_ID\",\"value\":\"$AZURE_CLIENT_ID\"},{\"name\":\"AZURE_TENANT_ID\",\"value\":\"$AZURE_TENANT_ID\"},{\"name\":\"KEYVAULT_NAME\",\"value\":\"$KEYVAULT_NAME\"}]}]}}}}"
-          
-          # Wait for deployments to restart with new environment variables
-          kubectl rollout restart deployment/argocd-server -n argocd
-          kubectl rollout restart deployment/argocd-repo-server -n argocd
-          kubectl rollout status deployment/argocd-server -n argocd --timeout=300s
-          kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
-
       - name: Configure ArgoCD
         run: |
           # Get ArgoCD admin password
@@ -296,61 +280,25 @@ jobs:
           # Create ArgoCD service LoadBalancer
           kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
 
-          # Configure ArgoCD with Azure environment variables for substitution
-          echo "Configuring ArgoCD with Azure environment variables..."
-          
-          # Get Azure parameters from terraform outputs
+          # Get Azure parameters from terraform outputs for environment variable substitution
           AZURE_CLIENT_ID="${{ needs.terraform.outputs.azure_client_id }}"
           AZURE_TENANT_ID="${{ needs.terraform.outputs.azure_tenant_id }}"
           KEYVAULT_NAME="${{ needs.terraform.outputs.keyvault_name }}"
           
-          # Create a ConfigMap with Azure environment variables
+          # Create a ConfigMap with Azure environment variables for ArgoCD to use
           kubectl create configmap argocd-env -n argocd \
             --from-literal=AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
             --from-literal=AZURE_TENANT_ID="$AZURE_TENANT_ID" \
             --from-literal=KEYVAULT_NAME="$KEYVAULT_NAME" \
             --dry-run=client -o yaml | kubectl apply -f -
           
-          # Enable environment variable expansion in ArgoCD ConfigMap
-          kubectl patch configmap argocd-cm -n argocd --patch '
-          data:
-            application.instanceLabelKey: argocd.argoproj.io/instance
-            server.rbac.log.enforce.enable: "false"
-            exec.enabled: "false"
-            server.enable.proxy.extension: "false"
-            reposerver.enable.git.submodule: "true"
-            # Enable environment variable substitution
-            kustomize.buildOptions: "--enable-alpha-plugins --load_restrictor none"
-          ' || echo "ConfigMap argocd-cm might not exist yet, continuing..."
+          # Inject environment variables into ArgoCD repo-server for variable substitution
+          kubectl set env deployment/argocd-repo-server -n argocd --from=configmap/argocd-env
           
-          # Patch ArgoCD repo-server deployment to use the ConfigMap
-          kubectl patch deployment argocd-repo-server -n argocd --type='merge' -p='
-          {
-            "spec": {
-              "template": {
-                "spec": {
-                  "containers": [
-                    {
-                      "name": "repo-server",
-                      "envFrom": [
-                        {
-                          "configMapRef": {
-                            "name": "argocd-env"
-                          }
-                        }
-                      ]
-                    }
-                  ]
-                }
-              }
-            }
-          }'
-          
-          # Wait for repo-server deployment to restart
-          kubectl rollout restart deployment/argocd-repo-server -n argocd
+          # Wait for repo-server deployment to be ready with new environment variables
           kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
 
-          # Wait for external IP (with timeout and better error handling)
+          # Wait for external IP
           echo "Waiting for ArgoCD LoadBalancer IP..."
           RETRY_COUNT=0
           MAX_RETRIES=30
@@ -373,123 +321,28 @@ jobs:
 
       - name: Deploy Root Application via ArgoCD
         run: |
-          # Get ArgoCD server external IP
-          ARGOCD_SERVER=$(kubectl get svc argocd-server -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          echo "ArgoCD Server IP: $ARGOCD_SERVER"
-
-          # Install ArgoCD CLI if not already available
-          echo "Checking for ArgoCD CLI..."
-          
-          if command -v argocd &> /dev/null; then
-            echo "ArgoCD CLI already installed"
-            argocd version --client
-          else
-            echo "Installing ArgoCD CLI..."
-            
-            # Download to /tmp directory
-            curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-            
-            # Verify download was successful
-            if [ ! -f /tmp/argocd ]; then
-              echo "Failed to download ArgoCD CLI"
-              exit 1
-            fi
-            
-            # Make executable and move to /usr/local/bin
-            chmod +x /tmp/argocd
-            sudo mv /tmp/argocd /usr/local/bin/argocd
-            
-            # Verify installation
-            argocd version --client
-            echo "ArgoCD CLI installed successfully"
-          fi
-          # Wait for ArgoCD API to be ready
-          sleep 30
-
-          # Login to ArgoCD
-          argocd login $ARGOCD_SERVER --username admin --password $ARGOCD_PASSWORD --insecure
-
-          # Apply the root application with environment variable substitution enabled
-          kubectl apply -f - <<EOF
-          apiVersion: argoproj.io/v1alpha1
-          kind: Application
-          metadata:
-            name: root-app
-            namespace: argocd
-          spec:
-            project: default
-            source:
-              repoURL: https://github.com/${{ github.repository }}
-              targetRevision: HEAD
-              path: argocd/apps
-            destination:
-              server: https://kubernetes.default.svc
-              namespace: argocd
-            syncPolicy:
-              automated:
-                prune: true
-                selfHeal: true
-          EOF
+          # Simply apply the root application manifest
+          kubectl apply -f argocd/bootstrap/root-application.yaml
 
           # Wait for application to be created and auto-synced
           echo "Waiting for root application to be created and automatically synced..."
           sleep 30
-          
-          # Check application status and wait for auto-sync to complete
-          MAX_WAIT_TIME=300  # 5 minutes
-          WAIT_INTERVAL=15   # Check every 15 seconds
-          ELAPSED_TIME=0
-          
-          while [ $ELAPSED_TIME -lt $MAX_WAIT_TIME ]; do
-            APP_STATUS=$(argocd app get root-app -o json | jq -r '.status.sync.status' 2>/dev/null || echo "Unknown")
-            APP_HEALTH=$(argocd app get root-app -o json | jq -r '.status.health.status' 2>/dev/null || echo "Unknown")
-            
-            echo "Root app - Sync: $APP_STATUS, Health: $APP_HEALTH (waited ${ELAPSED_TIME}s)"
-            
-            if [ "$APP_STATUS" = "Synced" ]; then
-              echo "Root application successfully auto-synced!"
-              break
-            fi
-            
-            sleep $WAIT_INTERVAL
-            ELAPSED_TIME=$((ELAPSED_TIME + WAIT_INTERVAL))
-          done
-          
-          if [ $ELAPSED_TIME -ge $MAX_WAIT_TIME ]; then
-            echo "Warning: Root application did not sync within $MAX_WAIT_TIME seconds"
-            echo "Current status:"
-            argocd app get root-app || true
-            echo "Continuing with deployment..."
-          fi
-
-          echo "ArgoCD setup complete!"
-          echo "Access ArgoCD at: http://$ARGOCD_SERVER"
-          echo "Username: admin"
-          echo "Password: $ARGOCD_PASSWORD"
 
       - name: Wait for Applications to Deploy
         run: |
           echo "Waiting for ArgoCD applications to deploy..."
           
-          # Get ArgoCD server external IP
-          ARGOCD_SERVER=$(kubectl get svc argocd-server -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          
-          # Login to ArgoCD
-          argocd login $ARGOCD_SERVER --username admin --password $ARGOCD_PASSWORD --insecure
-          
-          # Wait for all applications to be synced and healthy
-          argocd app list
-          
-          # Wait for specific applications to be healthy (using correct app names)
+          # Wait for applications to be created and synced (simple approach)
           echo "Waiting for applications to be healthy..."
-          argocd app wait apache-superset --timeout 600 || echo "Superset app deployment completed"
-          argocd app wait nifi-prod --timeout 600 || echo "NiFi app deployment completed" 
-          argocd app wait kobotoolbox --timeout 600 || echo "KoboToolbox app deployment completed"
-          argocd app wait postgresql --timeout 600 || echo "PostgreSQL app deployment completed"
-          argocd app wait monitoring-stack --timeout 600 || echo "Monitoring app deployment completed"
-          argocd app wait joget --timeout 600 || echo "Joget app deployment completed"
+          sleep 60  # Give ArgoCD time to create and sync all applications
           
-          echo "All applications deployed successfully!"
+          # Check that all applications are created
+          kubectl get applications -n argocd || echo "Applications are being created..."
+          
+          echo "ArgoCD Applications deployment initiated!"
+          echo "Check ArgoCD UI for detailed status at: http://$(kubectl get svc argocd-server -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+          echo "Username: admin"
+          echo "Password: $ARGOCD_PASSWORD"
 
   terraform-destroy:
     name: "Terraform Destroy"
