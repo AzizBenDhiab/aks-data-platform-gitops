@@ -287,10 +287,6 @@ jobs:
 
           echo "ConfigMaps created successfully"
 
-
-
-
-
       - name: Install ArgoCD
         run: |
           # Create ArgoCD namespace
@@ -338,10 +334,32 @@ jobs:
           ARGOCD_SERVER=$(kubectl get svc argocd-server -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
           echo "ArgoCD Server IP: $ARGOCD_SERVER"
 
-          # Install ArgoCD CLI
-          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          chmod +x argocd
-          sudo mv argocd /usr/local/bin/
+          # Install ArgoCD CLI if not already available
+          echo "Checking for ArgoCD CLI..."
+          
+          if command -v argocd &> /dev/null; then
+            echo "ArgoCD CLI already installed"
+            argocd version --client
+          else
+            echo "Installing ArgoCD CLI..."
+            
+            # Download to /tmp directory
+            curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+            
+            # Verify download was successful
+            if [ ! -f /tmp/argocd ]; then
+              echo "Failed to download ArgoCD CLI"
+              exit 1
+            fi
+            
+            # Make executable and move to /usr/local/bin
+            chmod +x /tmp/argocd
+            sudo mv /tmp/argocd /usr/local/bin/argocd
+            
+            # Verify installation
+            argocd version --client
+            echo "ArgoCD CLI installed successfully"
+          fi
 
           # Wait for ArgoCD API to be ready
           sleep 30
