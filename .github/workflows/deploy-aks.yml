@@ -436,14 +436,14 @@ jobs:
           # Wait for all applications to be synced and healthy
           argocd app list
           
-          # Wait for specific applications to be healthy
+          # Wait for specific applications to be healthy (using correct app names)
           echo "Waiting for applications to be healthy..."
-          argocd app wait superset-app --timeout 300 || echo "Superset app not ready yet, continuing..."
-          argocd app wait nifi-app --timeout 300 || echo "NiFi app not ready yet, continuing..."
-          argocd app wait kobotoolbox-app --timeout 300 || echo "KoboToolbox app not ready yet, continuing..."
-          argocd app wait postgresql-app --timeout 300 || echo "PostgreSQL app not ready yet, continuing..."
-          argocd app wait monitoring --timeout 300 || echo "Monitoring app not ready yet, continuing..."
-          argocd app wait joget-app --timeout 300 || echo "Joget app not ready yet, continuing..."
+          argocd app wait apache-superset --timeout 300 || echo "Superset app not ready yet, continuing..."
+          argocd app wait nifi-prod --timeout 300 || echo "NiFi app not ready yet, continuing..."
+          argocd app wait kobotoolbox --timeout 300 || echo "KoboToolbox app not ready yet, continuing..."
+          argocd app wait postgresql --timeout 300 || echo "PostgreSQL app not ready yet, continuing..."
+          argocd app wait monitoring-stack --timeout 300 || echo "Monitoring app not ready yet, continuing..."
+          argocd app wait joget --timeout 300 || echo "Joget app not ready yet, continuing..."
           
           echo "Applications deployment phase complete. Now applying SecretProviderClass manifests with Azure parameters..."
           
@@ -486,7 +486,8 @@ jobs:
           
           # Handle Joget deployment with embedded SecretProviderClass
           echo "Updating and applying Joget deployment with SecretProviderClass..."
-          sed "s/useVMManagedIdentity: \"true\"/clientID: \"$AZURE_CLIENT_ID\"\n        tenantId: \"$AZURE_TENANT_ID\"\n        keyvaultName: \"$KEYVAULT_NAME\"\n        useVMManagedIdentity: \"true\"/" manifests/joget/joget-deployement.yaml > /tmp/updated-manifests/joget-deployement.yaml
+          # Use proper indentation for YAML structure (4 spaces to match existing)
+          sed "s/    useVMManagedIdentity: \"true\"/    clientID: \"$AZURE_CLIENT_ID\"\n    tenantId: \"$AZURE_TENANT_ID\"\n    keyvaultName: \"$KEYVAULT_NAME\"\n    useVMManagedIdentity: \"true\"/" manifests/joget/joget-deployement.yaml > /tmp/updated-manifests/joget-deployement.yaml
           
           # Apply Joget deployment with retry
           retry_count=0
@@ -540,14 +541,14 @@ jobs:
           # Clean up temporary files
           rm -rf /tmp/updated-manifests
           
-          # Trigger a final refresh of all applications to pick up all changes
+          # Trigger a final refresh of all applications to pick up all changes (using correct app names)
           echo "Final refresh of applications to pick up all changes..."
-          argocd app sync superset-app --timeout 120 || echo "Superset sync completed with warnings"
-          argocd app sync nifi-app --timeout 120 || echo "NiFi sync completed with warnings"
-          argocd app sync kobotoolbox-app --timeout 120 || echo "KoboToolbox sync completed with warnings"
-          argocd app sync postgresql-app --timeout 120 || echo "PostgreSQL sync completed with warnings"
-          argocd app sync monitoring --timeout 120 || echo "Monitoring sync completed with warnings"
-          argocd app sync joget-app --timeout 120 || echo "Joget sync completed with warnings"
+          argocd app sync apache-superset --timeout 120 || echo "Superset sync completed with warnings"
+          argocd app sync nifi-prod --timeout 120 || echo "NiFi sync completed with warnings"
+          argocd app sync kobotoolbox --timeout 120 || echo "KoboToolbox sync completed with warnings"
+          argocd app sync postgresql --timeout 120 || echo "PostgreSQL sync completed with warnings"
+          argocd app sync monitoring-stack --timeout 120 || echo "Monitoring sync completed with warnings"
+          argocd app sync joget --timeout 120 || echo "Joget sync completed with warnings"
           
           echo " All applications configured successfully with workload identity and SecretProviderClass!"
 
