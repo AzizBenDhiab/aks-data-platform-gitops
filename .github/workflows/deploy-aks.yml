@@ -284,31 +284,89 @@ jobs:
           AZURE_CLIENT_ID="${{ needs.terraform.outputs.azure_client_id }}"
           AZURE_TENANT_ID="${{ needs.terraform.outputs.azure_tenant_id }}"
           KEYVAULT_NAME="${{ needs.terraform.outputs.keyvault_name }}"
-          
+
           # Create a ConfigMap with Azure environment variables for ArgoCD to use
           kubectl create configmap argocd-env -n argocd \
             --from-literal=AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
             --from-literal=AZURE_TENANT_ID="$AZURE_TENANT_ID" \
             --from-literal=KEYVAULT_NAME="$KEYVAULT_NAME" \
             --dry-run=client -o yaml | kubectl apply -f -
-          
-          # Enable environment variable substitution in ArgoCD
+
+          # Configure CMP plugin for envsubst to process all YAML files
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: cmp-plugin
+            namespace: argocd
+          data:
+            plugin.yaml: |
+              apiVersion: argoproj.io/v1alpha1
+              kind: ConfigManagementPlugin
+              metadata:
+                name: envsubst
+              spec:
+                generate:
+                  command: ["sh", "-c"]
+                  args: ["mkdir -p /tmp/substituted && find \$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -exec sh -c 'envsubst < {} > /tmp/substituted/\$(basename {})' \\; && cat /tmp/substituted/*.yaml"]
+          EOF
+
+          # Enable CMP plugin in ArgoCD
           kubectl patch configmap argocd-cm -n argocd --type merge -p='
           {
             "data": {
-              "application.instanceLabelKey": "argocd.argoproj.io/instance"
+              "configManagementPlugins": |
+                - name: envsubst
+                  generate:
+                    command: ["sh", "-c"]
+                    args: ["mkdir -p /tmp/substituted && find \$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -exec sh -c 'envsubst < {} > /tmp/substituted/\$(basename {})' \\; && cat /tmp/substituted/*.yaml"]
             }
-          }' || echo "ConfigMap argocd-cm might not exist yet, continuing..."
-          
-          # Inject environment variables into ArgoCD repo-server for variable substitution
+          }'
+
+          # Inject environment variables into ArgoCD repo-server
           kubectl set env deployment/argocd-repo-server -n argocd --from=configmap/argocd-env
-          
-          # Force restart of repo-server to ensure environment variables are loaded
+
+          # Ensure envsubst is available in the argocd-repo-server container (Ubuntu-based image)
+          kubectl patch deployment argocd-repo-server -n argocd --type=json -p='[
+            {
+              "op": "add",
+              "path": "/spec/template/spec/containers/0/command",
+              "value": ["/usr/local/bin/argocd", "repo-server"]
+            },
+            {
+              "op": "add",
+              "path": "/spec/template/spec/containers/0/image",
+              "value": "argoproj/argocd:v2.12.4"
+            },
+            {
+              "op": "add",
+              "path": "/spec/template/spec/containers/0/volumeMounts/-",
+              "value": {
+                "name": "cmp-plugin",
+                "mountPath": "/home/argocd/cmp-server/plugins"
+              }
+            },
+            {
+              "op": "add",
+              "path": "/spec/template/spec/volumes/-",
+              "value": {
+                "name": "cmp-plugin",
+                "configMap": {
+                  "name": "cmp-plugin"
+                }
+              }
+            }
+          ]'
+
+          # Install envsubst in argocd-repo-server (Ubuntu-based image)
+          kubectl exec -n argocd deployment/argocd-repo-server -- sh -c "command -v envsubst || (apt-get update && apt-get install -y gettext-base)" || echo "Failed to install envsubst, but continuing..."
+
+          # Force restart of repo-server to ensure environment variables and plugin are loaded
           kubectl rollout restart deployment/argocd-repo-server -n argocd
-          
-          # Wait for repo-server deployment to be ready with new environment variables
+
+          # Wait for repo-server deployment to be ready
           kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
-          
+
           # Verify environment variables are properly injected
           echo "Verifying environment variables in repo-server..."
           kubectl exec -n argocd deployment/argocd-repo-server -- env | grep -E "AZURE_CLIENT_ID|AZURE_TENANT_ID|KEYVAULT_NAME" || echo "Environment variables verification failed, but continuing..."
@@ -327,13 +385,12 @@ jobs:
             sleep 10
             RETRY_COUNT=$((RETRY_COUNT + 1))
           done
-          
+
           if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
             echo "Failed to get LoadBalancer IP after $MAX_RETRIES attempts"
             kubectl get svc argocd-server -n argocd
             exit 1
           fi
-
       - name: Deploy Root Application via ArgoCD
         run: |
           # Simply apply the root application manifest

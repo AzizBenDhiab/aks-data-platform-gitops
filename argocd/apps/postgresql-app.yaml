@@ -14,6 +14,8 @@ spec:
   - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
     targetRevision: HEAD
     path: manifests/postgresql
+    plugin:
+      name: envsubst
   # Second source: Helm chart
   - repoURL: https://charts.bitnami.com/bitnami
     targetRevision: 12.12.10

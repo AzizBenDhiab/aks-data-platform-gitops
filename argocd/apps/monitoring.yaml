@@ -248,6 +248,8 @@ spec:
     - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
       targetRevision: HEAD
       path: manifests/monitoring
+      plugin:
+        name: envsubst
 
   destination:
     server: https://kubernetes.default.svc

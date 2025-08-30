@@ -14,6 +14,8 @@ spec:
   - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
     targetRevision: HEAD
     path: manifests/superset
+    plugin:
+      name: envsubst
   # Helm chart
   - repoURL: https://apache.github.io/superset
     targetRevision: 0.14.2
