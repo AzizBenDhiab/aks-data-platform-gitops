@@ -360,7 +360,6 @@ jobs:
             argocd version --client
             echo "ArgoCD CLI installed successfully"
           fi
-
           # Wait for ArgoCD API to be ready
           sleep 30
 
@@ -389,11 +388,36 @@ jobs:
                 selfHeal: true
           EOF
 
-          # Wait for application to be created
-          sleep 10
-
-          # Sync root application
-          argocd app sync root-app --timeout 300
+          # Wait for application to be created and auto-synced
+          echo "Waiting for root application to be created and automatically synced..."
+          sleep 30
+          
+          # Check application status and wait for auto-sync to complete
+          MAX_WAIT_TIME=300  # 5 minutes
+          WAIT_INTERVAL=15   # Check every 15 seconds
+          ELAPSED_TIME=0
+          
+          while [ $ELAPSED_TIME -lt $MAX_WAIT_TIME ]; do
+            APP_STATUS=$(argocd app get root-app -o json | jq -r '.status.sync.status' 2>/dev/null || echo "Unknown")
+            APP_HEALTH=$(argocd app get root-app -o json | jq -r '.status.health.status' 2>/dev/null || echo "Unknown")
+            
+            echo "Root app - Sync: $APP_STATUS, Health: $APP_HEALTH (waited ${ELAPSED_TIME}s)"
+            
+            if [ "$APP_STATUS" = "Synced" ]; then
+              echo "Root application successfully auto-synced!"
+              break
+            fi
+            
+            sleep $WAIT_INTERVAL
+            ELAPSED_TIME=$((ELAPSED_TIME + WAIT_INTERVAL))
+          done
+          
+          if [ $ELAPSED_TIME -ge $MAX_WAIT_TIME ]; then
+            echo "Warning: Root application did not sync within $MAX_WAIT_TIME seconds"
+            echo "Current status:"
+            argocd app get root-app || true
+            echo "Continuing with deployment..."
+          fi
 
           echo "ArgoCD setup complete!"
           echo "Access ArgoCD at: http://$ARGOCD_SERVER"
