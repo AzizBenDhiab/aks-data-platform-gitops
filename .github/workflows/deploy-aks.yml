@@ -349,7 +349,7 @@ jobs:
                     "name": "var-files"
                   },
                   {
-                    "mountPath": "/home/argocd/cmp-server/plugins",
+                    "mountPath": "/home/argocd/cmp-server/config",
                     "name": "cmp-envsubst-plugin"
                   },
                   {
