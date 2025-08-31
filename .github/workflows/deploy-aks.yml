@@ -350,7 +350,7 @@ jobs:
                   },
                   {
                     "mountPath": "/home/argocd/cmp-server/plugins",
-                    "name": "plugins"
+                    "name": "cmp-envsubst-plugin"
                   },
                   {
                     "mountPath": "/tmp",
@@ -374,7 +374,7 @@ jobs:
                 "configMap": {
                   "name": "cmp-plugin"
                 },
-                "name": "plugins"
+                "name": "cmp-envsubst-plugin"
               }
             }
           ]'
