@@ -292,24 +292,24 @@ jobs:
             --from-literal=KEYVAULT_NAME="$KEYVAULT_NAME" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-          # Configure CMP plugin for envsubst to process all YAML files
-          cat <<EOF | kubectl apply -f -
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            name: cmp-plugin
-            namespace: argocd
-          data:
-            plugin.yaml: |
-              apiVersion: argoproj.io/v1alpha1
-              kind: ConfigManagementPlugin
-              metadata:
-                name: envsubst
-              spec:
-                generate:
-                  command: ["sh", "-c"]
-                  args: ["find \$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -exec envsubst < {} \\; -exec echo '---' \\;"]
-          EOF
+          # # Configure CMP plugin for envsubst to process all YAML files
+          # cat <<EOF | kubectl apply -f -
+          # apiVersion: v1
+          # kind: ConfigMap
+          # metadata:
+          #   name: cmp-plugin
+          #   namespace: argocd
+          # data:
+          #   plugin.yaml: |
+          #     apiVersion: argoproj.io/v1alpha1
+          #     kind: ConfigManagementPlugin
+          #     metadata:
+          #       name: envsubst
+          #     spec:
+          #       generate:
+          #         command: ["sh", "-c"]
+          #         args: ["find \$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -exec envsubst < {} \\; -exec echo '---' \\;"]
+          # EOF
 
           # Enable CMP plugin in ArgoCD
                    # Enable CMP plugin in ArgoCD using a separate ConfigMap patch
@@ -341,24 +341,6 @@ jobs:
               "op": "add",
               "path": "/spec/template/spec/containers/0/image",
               "value": "argoproj/argocd:v2.12.4"
-            },
-            {
-              "op": "add",
-              "path": "/spec/template/spec/containers/0/volumeMounts/-",
-              "value": {
-                "name": "cmp-plugin",
-                "mountPath": "/home/argocd/cmp-server/plugins"
-              }
-            },
-            {
-              "op": "add",
-              "path": "/spec/template/spec/volumes/-",
-              "value": {
-                "name": "cmp-plugin",
-                "configMap": {
-                  "name": "cmp-plugin"
-                }
-              }
             }
           ]'
 
