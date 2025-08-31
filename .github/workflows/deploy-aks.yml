@@ -292,24 +292,24 @@ jobs:
             --from-literal=KEYVAULT_NAME="$KEYVAULT_NAME" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-          # # Configure CMP plugin for envsubst to process all YAML files
-          # cat <<EOF | kubectl apply -f -
-          # apiVersion: v1
-          # kind: ConfigMap
-          # metadata:
-          #   name: cmp-plugin
-          #   namespace: argocd
-          # data:
-          #   plugin.yaml: |
-          #     apiVersion: argoproj.io/v1alpha1
-          #     kind: ConfigManagementPlugin
-          #     metadata:
-          #       name: envsubst
-          #     spec:
-          #       generate:
-          #         command: ["sh", "-c"]
-          #         args: ["find \$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -exec envsubst < {} \\; -exec echo '---' \\;"]
-          # EOF
+          # Configure CMP plugin for envsubst to process all YAML files
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: cmp-plugin
+            namespace: argocd
+          data:
+            plugin.yaml: |
+              apiVersion: argoproj.io/v1alpha1
+              kind: ConfigManagementPlugin
+              metadata:
+                name: envsubst
+              spec:
+                generate:
+                  command: ["sh", "-c"]
+                  args: ["find \$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -exec /usr/local/bin/shared/envsubst < {} \\; -exec echo '---' \\;"]
+          EOF
 
           # Enable CMP plugin in ArgoCD
                    # Enable CMP plugin in ArgoCD using a separate ConfigMap patch
@@ -330,22 +330,67 @@ jobs:
           # Inject environment variables into ArgoCD repo-server
           kubectl set env deployment/argocd-repo-server -n argocd --from=configmap/argocd-env
 
-          # Ensure envsubst is available in the argocd-repo-server container (Ubuntu-based image)
+          # Patch argocd-repo-server to include envsubst and mount CMP plugin
           kubectl patch deployment argocd-repo-server -n argocd --type=json -p='[
             {
               "op": "add",
-              "path": "/spec/template/spec/containers/0/command",
-              "value": ["/usr/local/bin/argocd", "repo-server"]
+              "path": "/spec/template/spec/initContainers",
+              "value": [
+                {
+                  "name": "install-envsubst",
+                  "image": "busybox:1.36",
+                  "command": ["sh", "-c"],
+                  "args": ["apk add --no-cache gettext && cp /usr/bin/envsubst /shared/envsubst && chmod +x /shared/envsubst"],
+                  "volumeMounts": [
+                    {
+                      "name": "shared-tools",
+                      "mountPath": "/shared"
+                    }
+                  ]
+                }
+              ]
             },
             {
               "op": "add",
-              "path": "/spec/template/spec/containers/0/image",
-              "value": "argoproj/argocd:v2.12.4"
+              "path": "/spec/template/spec/volumes",
+              "value": [
+                {
+                  "name": "shared-tools",
+                  "emptyDir": {}
+                },
+                {
+                  "name": "cmp-plugin",
+                  "configMap": {
+                    "name": "cmp-plugin"
+                  }
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "path": "/spec/template/spec/containers/0/volumeMounts",
+              "value": [
+                {
+                  "name": "shared-tools",
+                  "mountPath": "/usr/local/bin/shared"
+                },
+                {
+                  "name": "cmp-plugin",
+                  "mountPath": "/home/argocd/cmp-server/plugins"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "path": "/spec/template/spec/containers/0/env",
+              "value": [
+                {
+                  "name": "PATH",
+                  "value": "/usr/local/bin/shared:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+                }
+              ]
             }
           ]'
-
-          # Install envsubst in argocd-repo-server (Ubuntu-based image)
-          kubectl exec -n argocd deployment/argocd-repo-server -- sh -c "command -v envsubst || (apt-get update && apt-get install -y gettext-base)" || echo "Failed to install envsubst, but continuing..."
 
           # Force restart of repo-server to ensure environment variables and plugin are loaded
           kubectl rollout restart deployment/argocd-repo-server -n argocd
