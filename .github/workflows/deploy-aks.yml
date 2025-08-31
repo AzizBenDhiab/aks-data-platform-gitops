@@ -308,7 +308,7 @@ jobs:
               spec:
                 generate:
                   command: ["sh", "-c"]
-                  args: ["mkdir -p /tmp/substituted && find \$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -exec sh -c 'envsubst < {} > /tmp/substituted/\$(basename {})' \\; && cat /tmp/substituted/*.yaml"]
+                  args: ["find \$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -exec envsubst < {} \\; -exec echo '---' \\;"]
           EOF
 
           # Enable CMP plugin in ArgoCD
@@ -319,7 +319,7 @@ jobs:
                 - name: envsubst
                   generate:
                     command: ["sh", "-c"]
-                    args: ["mkdir -p /tmp/substituted && find \$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -exec sh -c 'envsubst < {} > /tmp/substituted/\$(basename {})' \\; && cat /tmp/substituted/*.yaml"]
+                    args: ["find \$ARGOCD_APP_SOURCE_PATH -name \"*.yaml\" -exec envsubst < {} \\; -exec echo \"---\" \\;"]
             }
           }'
 
