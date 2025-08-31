@@ -312,16 +312,20 @@ jobs:
           EOF
 
           # Enable CMP plugin in ArgoCD
-          kubectl patch configmap argocd-cm -n argocd --type merge -p='
-          {
-            "data": {
-              "configManagementPlugins": |
-                - name: envsubst
-                  generate:
-                    command: ["sh", "-c"]
-                    args: ["find \$ARGOCD_APP_SOURCE_PATH -name \"*.yaml\" -exec envsubst < {} \\; -exec echo \"---\" \\;"]
-            }
-          }'
+                   # Enable CMP plugin in ArgoCD using a separate ConfigMap patch
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: argocd-cm
+            namespace: argocd
+          data:
+            configManagementPlugins: |
+              - name: envsubst
+                generate:
+                  command: ["sh", "-c"]
+                  args: ["find \\\$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -exec envsubst < {} \\; -exec echo '---' \\;"]
+          EOF
 
           # Inject environment variables into ArgoCD repo-server
           kubectl set env deployment/argocd-repo-server -n argocd --from=configmap/argocd-env
