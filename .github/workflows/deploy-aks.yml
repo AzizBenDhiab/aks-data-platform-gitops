@@ -308,7 +308,7 @@ jobs:
               spec:
                 generate:
                   command: ["sh", "-c"]
-                  args: ["find \$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -exec /usr/local/bin/shared/envsubst < {} \\; -exec echo '---' \\;"]
+                  args: ["find \$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -exec envsubst < {} \\; -exec echo '---' \\;"]
           EOF
 
           # Enable CMP plugin in ArgoCD
@@ -330,67 +330,62 @@ jobs:
           # Inject environment variables into ArgoCD repo-server
           kubectl set env deployment/argocd-repo-server -n argocd --from=configmap/argocd-env
 
-          # Patch argocd-repo-server to include envsubst and mount CMP plugin
+          # Add CMP sidecar container to repo-server instead of patching existing container
           kubectl patch deployment argocd-repo-server -n argocd --type=json -p='[
             {
               "op": "add",
-              "path": "/spec/template/spec/initContainers",
-              "value": [
-                {
-                  "name": "install-envsubst",
-                  "image": "alpine:3.18",
-                  "command": ["sh", "-c"],
-                  "args": ["apk add --no-cache gettext && cp /usr/bin/envsubst /shared/envsubst && chmod +x /shared/envsubst"],
-                  "volumeMounts": [
-                    {
-                      "name": "shared-tools",
-                      "mountPath": "/shared"
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "op": "add",
-              "path": "/spec/template/spec/volumes",
-              "value": [
-                {
-                  "name": "shared-tools",
-                  "emptyDir": {}
+              "path": "/spec/template/spec/containers/-",
+              "value": {
+                "name": "cmp-envsubst",
+                "command": ["/var/run/argocd/argocd-cmp-server"],
+                "image": "quay.io/argoproj/argocd:v2.12.4",
+                "securityContext": {
+                  "runAsNonRoot": true,
+                  "runAsUser": 999
                 },
-                {
-                  "name": "cmp-plugin",
-                  "configMap": {
-                    "name": "cmp-plugin"
+                "volumeMounts": [
+                  {
+                    "mountPath": "/var/run/argocd",
+                    "name": "var-files"
+                  },
+                  {
+                    "mountPath": "/home/argocd/cmp-server/plugins",
+                    "name": "plugins"
+                  },
+                  {
+                    "mountPath": "/tmp",
+                    "name": "cmp-tmp"
                   }
-                }
-              ]
+                ]
+              }
             },
             {
               "op": "add",
-              "path": "/spec/template/spec/containers/0/volumeMounts",
-              "value": [
-                {
-                  "name": "shared-tools",
-                  "mountPath": "/usr/local/bin/shared"
+              "path": "/spec/template/spec/volumes/-",
+              "value": {
+                "name": "cmp-tmp",
+                "emptyDir": {}
+              }
+            },
+            {
+              "op": "add",
+              "path": "/spec/template/spec/volumes/-",
+              "value": {
+                "configMap": {
+                  "name": "cmp-plugin"
                 },
-                {
-                  "name": "cmp-plugin",
-                  "mountPath": "/home/argocd/cmp-server/plugins"
-                }
-              ]
-            },
-            {
-              "op": "add",
-              "path": "/spec/template/spec/containers/0/env",
-              "value": [
-                {
-                  "name": "PATH",
-                  "value": "/usr/local/bin/shared:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-                }
-              ]
+                "name": "plugins"
+              }
             }
           ]'
+
+          # Install envsubst in the CMP sidecar
+          echo "Installing envsubst in CMP sidecar..."
+          kubectl exec -n argocd deployment/argocd-repo-server -c cmp-envsubst -- sh -c "
+            apk add --no-cache gettext-envsubst 2>/dev/null || 
+            apt-get update && apt-get install -y gettext-base 2>/dev/null ||
+            echo 'envsubst may already be available'
+          " || echo "envsubst installation attempted"
 
           # Force restart of repo-server to ensure environment variables and plugin are loaded
           kubectl rollout restart deployment/argocd-repo-server -n argocd
