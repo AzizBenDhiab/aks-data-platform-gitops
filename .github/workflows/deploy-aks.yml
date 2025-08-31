@@ -338,7 +338,7 @@ jobs:
               "value": [
                 {
                   "name": "install-envsubst",
-                  "image": "busybox:1.36",
+                  "image": "alpine:3.18",
                   "command": ["sh", "-c"],
                   "args": ["apk add --no-cache gettext && cp /usr/bin/envsubst /shared/envsubst && chmod +x /shared/envsubst"],
                   "volumeMounts": [
