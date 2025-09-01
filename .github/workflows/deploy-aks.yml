@@ -313,210 +313,210 @@ jobs:
           echo "Also available azure_client_id: '${{ needs.terraform.outputs.azure_client_id }}'"
           echo "=== End Debug ==="
 
-          # Create a ConfigMap with Azure environment variables for ArgoCD to use
-          kubectl create configmap argocd-env -n argocd \
-            --from-literal=AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
-            --from-literal=AZURE_TENANT_ID="$AZURE_TENANT_ID" \
-            --from-literal=KEYVAULT_NAME="$KEYVAULT_NAME" \
-            --dry-run=client -o yaml | kubectl apply -f -
+          # # Create a ConfigMap with Azure environment variables for ArgoCD to use
+          # kubectl create configmap argocd-env -n argocd \
+          #   --from-literal=AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
+          #   --from-literal=AZURE_TENANT_ID="$AZURE_TENANT_ID" \
+          #   --from-literal=KEYVAULT_NAME="$KEYVAULT_NAME" \
+          #   --dry-run=client -o yaml | kubectl apply -f -
 
-          # Configure improved CMP plugin for envsubst with better error handling
-          cat <<EOF | kubectl apply -f -
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            name: cmp-plugin
-            namespace: argocd
-            labels:
-              app.kubernetes.io/part-of: argocd
-          data:
-            plugin.yaml: |
-              apiVersion: argoproj.io/v1alpha1
-              kind: ConfigManagementPlugin
-              metadata:
-                name: envsubst
-              spec:
-                version: v1.0
-                init:
-                  command: ["sh", "-c"]
-                  args:
-                    - |
-                      set -e
-                      echo "CMP envsubst: Processing environment variable substitution..."
-                      # Verify required environment variables are present
-                      if [ -z "\$AZURE_CLIENT_ID" ] || [ -z "\$AZURE_TENANT_ID" ] || [ -z "\$KEYVAULT_NAME" ]; then
-                        echo "WARNING: Some required environment variables are missing"
-                        echo "AZURE_CLIENT_ID: \${AZURE_CLIENT_ID:-NOT_SET}"
-                        echo "AZURE_TENANT_ID: \${AZURE_TENANT_ID:-NOT_SET}" 
-                        echo "KEYVAULT_NAME: \${KEYVAULT_NAME:-NOT_SET}"
-                      fi
-                generate:
-                  command: ["sh", "-c"]
-                  args:
-                    - |
-                      set -e
-                      echo "CMP envsubst: Generating manifests with environment variable substitution..."
-                      find \$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -o -name '*.yml' | while read -r file; do
-                        echo "Processing: \$file"
-                        envsubst < "\$file"
-                        echo "---"
-                      done
-                discover:
-                  fileName: "*.yaml"
-                allowConcurrency: true
-          EOF
+          # # Configure improved CMP plugin for envsubst with better error handling
+          # cat <<EOF | kubectl apply -f -
+          # apiVersion: v1
+          # kind: ConfigMap
+          # metadata:
+          #   name: cmp-plugin
+          #   namespace: argocd
+          #   labels:
+          #     app.kubernetes.io/part-of: argocd
+          # data:
+          #   plugin.yaml: |
+          #     apiVersion: argoproj.io/v1alpha1
+          #     kind: ConfigManagementPlugin
+          #     metadata:
+          #       name: envsubst
+          #     spec:
+          #       version: v1.0
+          #       init:
+          #         command: ["sh", "-c"]
+          #         args:
+          #           - |
+          #             set -e
+          #             echo "CMP envsubst: Processing environment variable substitution..."
+          #             # Verify required environment variables are present
+          #             if [ -z "\$AZURE_CLIENT_ID" ] || [ -z "\$AZURE_TENANT_ID" ] || [ -z "\$KEYVAULT_NAME" ]; then
+          #               echo "WARNING: Some required environment variables are missing"
+          #               echo "AZURE_CLIENT_ID: \${AZURE_CLIENT_ID:-NOT_SET}"
+          #               echo "AZURE_TENANT_ID: \${AZURE_TENANT_ID:-NOT_SET}" 
+          #               echo "KEYVAULT_NAME: \${KEYVAULT_NAME:-NOT_SET}"
+          #             fi
+          #       generate:
+          #         command: ["sh", "-c"]
+          #         args:
+          #           - |
+          #             set -e
+          #             echo "CMP envsubst: Generating manifests with environment variable substitution..."
+          #             find \$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -o -name '*.yml' | while read -r file; do
+          #               echo "Processing: \$file"
+          #               envsubst < "\$file"
+          #               echo "---"
+          #             done
+          #       discover:
+          #         fileName: "*.yaml"
+          #       allowConcurrency: true
+          # EOF
 
-          # Skip legacy ConfigMap patching - using modern CMP sidecar approach
-          echo "Using modern CMP sidecar approach, skipping legacy ConfigMap plugin configuration..."
+          # # Skip legacy ConfigMap patching - using modern CMP sidecar approach
+          # echo "Using modern CMP sidecar approach, skipping legacy ConfigMap plugin configuration..."
           
-          # Verify ConfigMap content (should not have configManagementPlugins section)
-          echo "=== ConfigMap Content (should not contain configManagementPlugins) ==="
-          kubectl get configmap argocd-cm -n argocd -o yaml
-          echo "=== End ConfigMap Content ==="
+          # # Verify ConfigMap content (should not have configManagementPlugins section)
+          # echo "=== ConfigMap Content (should not contain configManagementPlugins) ==="
+          # kubectl get configmap argocd-cm -n argocd -o yaml
+          # echo "=== End ConfigMap Content ==="
 
-          # Inject environment variables into ArgoCD repo-server
-          kubectl set env deployment/argocd-repo-server -n argocd --from=configmap/argocd-env
+          # # Inject environment variables into ArgoCD repo-server
+          # kubectl set env deployment/argocd-repo-server -n argocd --from=configmap/argocd-env
 
-          # Add CMP sidecar container to repo-server instead of patching existing container
-          kubectl patch deployment argocd-repo-server -n argocd --type=json -p='[
-            {
-              "op": "add",
-              "path": "/spec/template/spec/containers/-",
-              "value": {
-                "name": "cmp-envsubst",
-                "command": ["/var/run/argocd/argocd-cmp-server"],
-                "image": "quay.io/argoproj/argocd:v2.12.4",
-                "securityContext": {
-                  "runAsNonRoot": true,
-                  "runAsUser": 999
-                },
-                "env": [
-                  {
-                    "name": "AZURE_CLIENT_ID",
-                    "valueFrom": {
-                      "configMapKeyRef": {
-                        "name": "argocd-env",
-                        "key": "AZURE_CLIENT_ID"
-                      }
-                    }
-                  },
-                  {
-                    "name": "AZURE_TENANT_ID",
-                    "valueFrom": {
-                      "configMapKeyRef": {
-                        "name": "argocd-env",
-                        "key": "AZURE_TENANT_ID"
-                      }
-                    }
-                  },
-                  {
-                    "name": "KEYVAULT_NAME",
-                    "valueFrom": {
-                      "configMapKeyRef": {
-                        "name": "argocd-env",
-                        "key": "KEYVAULT_NAME"
-                      }
-                    }
-                  }
-                ],
-                "volumeMounts": [
-                  {
-                    "mountPath": "/var/run/argocd",
-                    "name": "var-files"
-                  },
-                  {
-                    "mountPath": "/home/argocd/cmp-server/config",
-                    "name": "cmp-envsubst-plugin"
-                  },
-                  {
-                    "mountPath": "/home/argocd/cmp-server/plugins",
-                    "name": "cmp-plugins"
-                  },
-                  {
-                    "mountPath": "/tmp",
-                    "name": "cmp-tmp"
-                  }
-                ]
-              }
-            },
-            {
-              "op": "add",
-              "path": "/spec/template/spec/volumes/-",
-              "value": {
-                "name": "cmp-tmp",
-                "emptyDir": {}
-              }
-            },
-            {
-              "op": "add",
-              "path": "/spec/template/spec/volumes/-",
-              "value": {
-                "name": "cmp-plugins",
-                "emptyDir": {}
-              }
-            },
-            {
-              "op": "add",
-              "path": "/spec/template/spec/volumes/-",
-              "value": {
-                "configMap": {
-                  "name": "cmp-plugin"
-                },
-                "name": "cmp-envsubst-plugin"
-              }
-            }
-          ]'
+          # # Add CMP sidecar container to repo-server instead of patching existing container
+          # kubectl patch deployment argocd-repo-server -n argocd --type=json -p='[
+          #   {
+          #     "op": "add",
+          #     "path": "/spec/template/spec/containers/-",
+          #     "value": {
+          #       "name": "cmp-envsubst",
+          #       "command": ["/var/run/argocd/argocd-cmp-server"],
+          #       "image": "quay.io/argoproj/argocd:v2.12.4",
+          #       "securityContext": {
+          #         "runAsNonRoot": true,
+          #         "runAsUser": 999
+          #       },
+          #       "env": [
+          #         {
+          #           "name": "AZURE_CLIENT_ID",
+          #           "valueFrom": {
+          #             "configMapKeyRef": {
+          #               "name": "argocd-env",
+          #               "key": "AZURE_CLIENT_ID"
+          #             }
+          #           }
+          #         },
+          #         {
+          #           "name": "AZURE_TENANT_ID",
+          #           "valueFrom": {
+          #             "configMapKeyRef": {
+          #               "name": "argocd-env",
+          #               "key": "AZURE_TENANT_ID"
+          #             }
+          #           }
+          #         },
+          #         {
+          #           "name": "KEYVAULT_NAME",
+          #           "valueFrom": {
+          #             "configMapKeyRef": {
+          #               "name": "argocd-env",
+          #               "key": "KEYVAULT_NAME"
+          #             }
+          #           }
+          #         }
+          #       ],
+          #       "volumeMounts": [
+          #         {
+          #           "mountPath": "/var/run/argocd",
+          #           "name": "var-files"
+          #         },
+          #         {
+          #           "mountPath": "/home/argocd/cmp-server/config",
+          #           "name": "cmp-envsubst-plugin"
+          #         },
+          #         {
+          #           "mountPath": "/home/argocd/cmp-server/plugins",
+          #           "name": "cmp-plugins"
+          #         },
+          #         {
+          #           "mountPath": "/tmp",
+          #           "name": "cmp-tmp"
+          #         }
+          #       ]
+          #     }
+          #   },
+          #   {
+          #     "op": "add",
+          #     "path": "/spec/template/spec/volumes/-",
+          #     "value": {
+          #       "name": "cmp-tmp",
+          #       "emptyDir": {}
+          #     }
+          #   },
+          #   {
+          #     "op": "add",
+          #     "path": "/spec/template/spec/volumes/-",
+          #     "value": {
+          #       "name": "cmp-plugins",
+          #       "emptyDir": {}
+          #     }
+          #   },
+          #   {
+          #     "op": "add",
+          #     "path": "/spec/template/spec/volumes/-",
+          #     "value": {
+          #       "configMap": {
+          #         "name": "cmp-plugin"
+          #       },
+          #       "name": "cmp-envsubst-plugin"
+          #     }
+          #   }
+          # ]'
 
-          # Skip envsubst installation here - will do it after restart with proper pod targeting
-          echo "Skipping initial envsubst installation - will install after pod restart..."
+          # # Skip envsubst installation here - will do it after restart with proper pod targeting
+          # echo "Skipping initial envsubst installation - will install after pod restart..."
 
-          # Force restart of repo-server to ensure environment variables and plugin are loaded
-          kubectl rollout restart deployment/argocd-repo-server -n argocd
+          # # Force restart of repo-server to ensure environment variables and plugin are loaded
+          # kubectl rollout restart deployment/argocd-repo-server -n argocd
 
-          # Wait for repo-server deployment to be ready
-          kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
+          # # Wait for repo-server deployment to be ready
+          # kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
           
-          # Wait additional time for containers to be fully ready
-          echo "Waiting for containers to stabilize..."
-          sleep 30
+          # # Wait additional time for containers to be fully ready
+          # echo "Waiting for containers to stabilize..."
+          # sleep 30
           
-          # Check pod and container status before executing commands
-          echo "=== Repo Server Pod Status ==="
-          kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-repo-server
-          REPO_POD=$(kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-repo-server -o jsonpath='{.items[0].metadata.name}')
-          echo "Using pod: $REPO_POD"
-          kubectl get pod $REPO_POD -n argocd -o jsonpath='{.status.containerStatuses[*].name}' | tr ' ' '\n' | nl
-          echo "=== End Pod Status ==="
+          # # Check pod and container status before executing commands
+          # echo "=== Repo Server Pod Status ==="
+          # kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-repo-server
+          # REPO_POD=$(kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-repo-server -o jsonpath='{.items[0].metadata.name}')
+          # echo "Using pod: $REPO_POD"
+          # kubectl get pod $REPO_POD -n argocd -o jsonpath='{.status.containerStatuses[*].name}' | tr ' ' '\n' | nl
+          # echo "=== End Pod Status ==="
 
-          # Verify environment variables are properly injected
-          echo "Verifying environment variables in repo-server..."
-          kubectl exec -n argocd $REPO_POD -c argocd-repo-server -- env | grep -E "AZURE_CLIENT_ID|AZURE_TENANT_ID|KEYVAULT_NAME" || echo "Environment variables verification failed, but continuing..."
+          # # Verify environment variables are properly injected
+          # echo "Verifying environment variables in repo-server..."
+          # kubectl exec -n argocd $REPO_POD -c argocd-repo-server -- env | grep -E "AZURE_CLIENT_ID|AZURE_TENANT_ID|KEYVAULT_NAME" || echo "Environment variables verification failed, but continuing..."
           
-          # Verify environment variables in CMP sidecar
-          echo "Verifying environment variables in CMP sidecar..."
-          kubectl exec -n argocd $REPO_POD -c cmp-envsubst -- env | grep -E "AZURE_CLIENT_ID|AZURE_TENANT_ID|KEYVAULT_NAME" || echo "CMP sidecar environment variables verification failed"
+          # # Verify environment variables in CMP sidecar
+          # echo "Verifying environment variables in CMP sidecar..."
+          # kubectl exec -n argocd $REPO_POD -c cmp-envsubst -- env | grep -E "AZURE_CLIENT_ID|AZURE_TENANT_ID|KEYVAULT_NAME" || echo "CMP sidecar environment variables verification failed"
           
-          # Check CMP sidecar logs for plugin registration
-          echo "=== CMP Sidecar Logs ==="
-          kubectl logs -n argocd $REPO_POD -c cmp-envsubst || echo "Failed to get CMP sidecar logs"
-          echo "=== End CMP Sidecar Logs ==="
+          # # Check CMP sidecar logs for plugin registration
+          # echo "=== CMP Sidecar Logs ==="
+          # kubectl logs -n argocd $REPO_POD -c cmp-envsubst || echo "Failed to get CMP sidecar logs"
+          # echo "=== End CMP Sidecar Logs ==="
           
-          # Check if plugin config is mounted correctly
-          echo "Checking CMP plugin configuration..."
-          kubectl exec -n argocd $REPO_POD -c cmp-envsubst -- ls -la /home/argocd/cmp-server/config/ || echo "Failed to check plugin config"
-          kubectl exec -n argocd $REPO_POD -c cmp-envsubst -- cat /home/argocd/cmp-server/config/plugin.yaml || echo "Failed to read plugin config"
+          # # Check if plugin config is mounted correctly
+          # echo "Checking CMP plugin configuration..."
+          # kubectl exec -n argocd $REPO_POD -c cmp-envsubst -- ls -la /home/argocd/cmp-server/config/ || echo "Failed to check plugin config"
+          # kubectl exec -n argocd $REPO_POD -c cmp-envsubst -- cat /home/argocd/cmp-server/config/plugin.yaml || echo "Failed to read plugin config"
           
-          # Install envsubst in the CMP sidecar (if container exists)
-          echo "Installing envsubst in CMP sidecar..."
-          if kubectl exec -n argocd $REPO_POD -c cmp-envsubst -- echo "Container ready" 2>/dev/null; then
-            kubectl exec -n argocd $REPO_POD -c cmp-envsubst -- sh -c "
-              apk add --no-cache gettext-envsubst 2>/dev/null || 
-              apt-get update && apt-get install -y gettext-base 2>/dev/null ||
-              echo 'envsubst may already be available'
-            " || echo "envsubst installation attempted"
-          else
-            echo "CMP sidecar container not ready or not found, skipping envsubst installation"
-          fi
+          # # Install envsubst in the CMP sidecar (if container exists)
+          # echo "Installing envsubst in CMP sidecar..."
+          # if kubectl exec -n argocd $REPO_POD -c cmp-envsubst -- echo "Container ready" 2>/dev/null; then
+          #   kubectl exec -n argocd $REPO_POD -c cmp-envsubst -- sh -c "
+          #     apk add --no-cache gettext-envsubst 2>/dev/null || 
+          #     apt-get update && apt-get install -y gettext-base 2>/dev/null ||
+          #     echo 'envsubst may already be available'
+          #   " || echo "envsubst installation attempted"
+          # else
+          #   echo "CMP sidecar container not ready or not found, skipping envsubst installation"
+          # fi
 
           # Wait for external IP
           echo "Waiting for ArgoCD LoadBalancer IP..."
