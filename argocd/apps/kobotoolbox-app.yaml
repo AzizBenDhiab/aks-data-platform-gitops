@@ -14,8 +14,6 @@ spec:
     - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
       targetRevision: HEAD
       path: manifests/kobotoolbox
-      plugin:
-        name: envsubst
     - repoURL: https://github.com/AzizBenDhiab/oaf-public-charts.git
       targetRevision: main
       path: charts/kobotoolbox
