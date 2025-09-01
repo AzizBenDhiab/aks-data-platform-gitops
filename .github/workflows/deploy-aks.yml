@@ -138,8 +138,8 @@ jobs:
       - name: Terraform Plan
         working-directory: ./terraform
         run: |
-          terraform plan -out=tfplan
-          echo "Plan file created: tfplan"
+          terraform plan -out=tfplan-${{ env.TF_VAR_cluster_name }}
+          echo "Plan file created: tfplan-${{ env.TF_VAR_cluster_name }}"
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
@@ -147,7 +147,7 @@ jobs:
         run: |
           echo "Applying terraform plan..."
           ls -la tfplan  # Verify plan file exists
-          terraform apply -auto-approve tfplan
+          terraform apply -auto-approve tfplan-${{ env.TF_VAR_cluster_name }}
 
       - name: Get Terraform Outputs
         if: github.ref == 'refs/heads/main'
