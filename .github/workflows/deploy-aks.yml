@@ -159,6 +159,7 @@ jobs:
           echo "keyvault_name=$(terraform output -raw keyvault_name)" >> $GITHUB_OUTPUT
           echo "azure_client_id=$(terraform output -raw azure_client_id)" >> $GITHUB_OUTPUT
           echo "azure_tenant_id=$(terraform output -raw azure_tenant_id)" >> $GITHUB_OUTPUT
+          echo "user_assigned_identity_client_id=$(terraform output -raw user_assigned_identity_client_id)" >> $GITHUB_OUTPUT
 
   generate-keyvault-secrets:
     name: "Generate Key Vault Secrets"
@@ -292,6 +293,14 @@ jobs:
           AZURE_TENANT_ID="${{ needs.terraform.outputs.azure_tenant_id }}"
           KEYVAULT_NAME="${{ needs.terraform.outputs.keyvault_name }}"
 
+          # Debug: Print the values we're getting from terraform
+          echo "=== Terraform Outputs Debug ==="
+          echo "AZURE_CLIENT_ID (user_assigned_identity): '$AZURE_CLIENT_ID'"
+          echo "AZURE_TENANT_ID: '$AZURE_TENANT_ID'" 
+          echo "KEYVAULT_NAME: '$KEYVAULT_NAME'"
+          echo "Also available azure_client_id: '${{ needs.terraform.outputs.azure_client_id }}'"
+          echo "=== End Debug ==="
+
           # Create a ConfigMap with Azure environment variables for ArgoCD to use
           kubectl create configmap argocd-env -n argocd \
             --from-literal=AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
@@ -395,6 +404,10 @@ jobs:
                     "name": "cmp-envsubst-plugin"
                   },
                   {
+                    "mountPath": "/home/argocd/cmp-server/plugins",
+                    "name": "cmp-plugins"
+                  },
+                  {
                     "mountPath": "/tmp",
                     "name": "cmp-tmp"
                   }
@@ -406,6 +419,14 @@ jobs:
               "path": "/spec/template/spec/volumes/-",
               "value": {
                 "name": "cmp-tmp",
+                "emptyDir": {}
+              }
+            },
+            {
+              "op": "add",
+              "path": "/spec/template/spec/volumes/-",
+              "value": {
+                "name": "cmp-plugins",
                 "emptyDir": {}
               }
             },
