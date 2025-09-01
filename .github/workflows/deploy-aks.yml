@@ -421,13 +421,8 @@ jobs:
             }
           ]'
 
-          # Install envsubst in the CMP sidecar
-          echo "Installing envsubst in CMP sidecar..."
-          kubectl exec -n argocd deployment/argocd-repo-server -c cmp-envsubst -- sh -c "
-            apk add --no-cache gettext-envsubst 2>/dev/null || 
-            apt-get update && apt-get install -y gettext-base 2>/dev/null ||
-            echo 'envsubst may already be available'
-          " || echo "envsubst installation attempted"
+          # Skip envsubst installation here - will do it after restart with proper pod targeting
+          echo "Skipping initial envsubst installation - will install after pod restart..."
 
           # Force restart of repo-server to ensure environment variables and plugin are loaded
           kubectl rollout restart deployment/argocd-repo-server -n argocd
