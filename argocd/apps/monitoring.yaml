@@ -4,7 +4,7 @@ metadata:
   name: monitoring-stack
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "5"
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   project: default
   sources:
@@ -248,8 +248,6 @@ spec:
     - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
       targetRevision: HEAD
       path: manifests/monitoring
-      plugin:
-        name: envsubst
 
   destination:
     server: https://kubernetes.default.svc
