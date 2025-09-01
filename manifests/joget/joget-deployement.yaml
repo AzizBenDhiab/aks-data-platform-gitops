@@ -27,7 +27,7 @@ metadata:
   name: joget-workload-identity  # ✅ Renamed from "joget" to follow convention
   namespace: joget
   annotations:
-    azure.workload.identity/client-id: "${AZURE_CLIENT_ID}" 
+    azure.workload.identity/client-id: "b501fcaa-b376-47bf-ba84-b0575145804e" 
   labels:
     azure.workload.identity/use: "true"  
 ---
@@ -66,9 +66,9 @@ spec:
   provider: azure
   parameters:
     usePodIdentity: "false"
-    clientID: "${AZURE_CLIENT_ID}"
-    tenantId: "${AZURE_TENANT_ID}"
-    keyvaultName: "${KEYVAULT_NAME}"
+    clientID: "b501fcaa-b376-47bf-ba84-b0575145804e"
+    tenantId: "eb554ecf-0352-4071-9a91-d464ab3bed97"
+    keyvaultName: "kv-aks-data-pipeline"
     cloudName: ""
     objects: |
       array:

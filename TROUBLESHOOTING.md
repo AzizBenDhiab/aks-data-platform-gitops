@@ -5,7 +5,7 @@
 ### Symptoms
 ```
 Failed to mount secrets store objects for pod: 
-error: failed to get vault: Invalid vault name: "${KEYVAULT_NAME}"
+error: failed to get vault: Invalid vault name: "kv-aks-data-pipeline"
 ```
 
 ### Root Cause Analysis
@@ -142,8 +142,8 @@ spec:
   provider: azure
   parameters:
     clientID: "${AZURE_CLIENT_ID}"      # ✅ Correct
-    tenantId: "${AZURE_TENANT_ID}"      # ✅ Correct  
-    keyvaultName: "${KEYVAULT_NAME}"    # ✅ Correct
+    tenantId: "eb554ecf-0352-4071-9a91-d464ab3bed97"      # ✅ Correct  
+    keyvaultName: "kv-aks-data-pipeline"    # ✅ Correct
 ```
 
 **Incorrect Syntax:**
@@ -319,8 +319,8 @@ find manifests/ -name "*.yaml" -exec sed -i "s/\${KEYVAULT_NAME}/$KEYVAULT_NAME/
 # Convert to Helm chart and use values.yaml
 azure:
   clientId: "${AZURE_CLIENT_ID}"
-  tenantId: "${AZURE_TENANT_ID}"
-  keyVaultName: "${KEYVAULT_NAME}"
+  tenantId: "eb554ecf-0352-4071-9a91-d464ab3bed97"
+  keyVaultName: "kv-aks-data-pipeline"
 ```
 
 ---
