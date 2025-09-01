@@ -271,6 +271,12 @@ jobs:
           # Wait for ArgoCD to be ready
           kubectl wait --for=condition=available --timeout=600s deployment/argocd-server -n argocd
 
+          # Debug: Check ArgoCD installation
+          echo "=== ArgoCD Installation Debug ==="
+          kubectl get pods -n argocd
+          kubectl get configmaps -n argocd
+          echo "=== End Debug ==="
+
       - name: Configure ArgoCD
         run: |
           # Get ArgoCD admin password
@@ -339,11 +345,28 @@ jobs:
           EOF
 
           # Enable CMP plugin in ArgoCD by patching existing ConfigMap safely
-          kubectl patch configmap argocd-cm -n argocd --type merge -p='{
-            "data": {
-              "configManagementPlugins": "- name: envsubst\n  generate:\n    command: [\"sh\", \"-c\"]\n    args: [\"find \\$ARGOCD_APP_SOURCE_PATH -name '*.yaml' -exec envsubst < {} \\; -exec echo '---' \\;\"]"
-            }
-          }' || echo "ConfigMap patch failed, but continuing..."
+          echo "Waiting for ArgoCD ConfigMap to be stable..."
+          sleep 10
+          
+          # Verify the ConfigMap exists first
+          if kubectl get configmap argocd-cm -n argocd >/dev/null 2>&1; then
+            echo "ConfigMap argocd-cm found, applying safe patch..."
+            kubectl patch configmap argocd-cm -n argocd --type strategic -p='{
+              "data": {
+                "configManagementPlugins": "- name: envsubst\n  generate:\n    command: [\"sh\", \"-c\"]\n    args: [\"find \\$ARGOCD_APP_SOURCE_PATH -name '"'"'*.yaml'"'"' -exec envsubst < {} \\; -exec echo '"'"'---'"'"' \\;\"]"
+              }
+            }'
+            echo "ConfigMap patched successfully"
+            
+            # Verify ConfigMap content after patch
+            echo "=== ConfigMap Content After Patch ==="
+            kubectl get configmap argocd-cm -n argocd -o yaml
+            echo "=== End ConfigMap Content ==="
+          else
+            echo "ERROR: argocd-cm ConfigMap not found!"
+            kubectl get configmaps -n argocd
+            exit 1
+          fi
 
           # Inject environment variables into ArgoCD repo-server
           kubectl set env deployment/argocd-repo-server -n argocd --from=configmap/argocd-env
@@ -457,6 +480,20 @@ jobs:
           
           echo "ArgoCD Applications deployment initiated!"
           echo "Check ArgoCD UI for detailed status at: http://$(kubectl get svc argocd-server -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+          
+          # Final ArgoCD debugging
+          echo ""
+          echo "=== Final ArgoCD Status Check ==="
+          kubectl get pods -n argocd
+          echo ""
+          kubectl get configmaps -n argocd
+          echo ""
+          echo "=== ArgoCD ConfigMap Content ==="
+          kubectl get configmap argocd-cm -n argocd -o yaml || echo "ERROR: ConfigMap argocd-cm not found"
+          echo ""
+          echo "=== ArgoCD Server Logs (last 20 lines) ==="
+          kubectl logs -n argocd -l app.kubernetes.io/name=argocd-server --tail=20 || true
+          echo "=== End Final Status Check ==="
           echo "Username: admin"
           echo "Password: $ARGOCD_PASSWORD"
 
