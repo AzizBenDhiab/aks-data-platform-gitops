@@ -5,7 +5,6 @@
 shared:
   # Empty or minimal init containers to avoid the dockerize issue
   initContainers: []
-  sidecarContainers: []
   extraEnv:
     BACKUPS_DIR: /srv/backups
   extraSecretEnv: {}

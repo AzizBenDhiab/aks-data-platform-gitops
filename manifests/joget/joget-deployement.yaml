@@ -244,22 +244,6 @@ spec:
                   fieldPath: metadata.namespace
             - name: KUBERNETES_LABELS
               value: "app=joget-dx8-tomcat9"
-            # Azure configuration from ConfigMap
-            - name: AZURE_CLIENT_ID
-              valueFrom:
-                configMapKeyRef:
-                  name: azure-config
-                  key: AZURE_CLIENT_ID
-            - name: AZURE_TENANT_ID
-              valueFrom:
-                configMapKeyRef:
-                  name: azure-config
-                  key: AZURE_TENANT_ID
-            - name: AZURE_KEYVAULT_NAME
-              valueFrom:
-                configMapKeyRef:
-                  name: azure-config
-                  key: AZURE_KEYVAULT_NAME
             # Enable clustering + SECURITY DISABLED VIA JAVA OPTS
             - name: CATALINA_OPTS
               value: "-Djoget.cluster.enabled=true -Dtomcat.clustering.enabled=true -Dsecurity.csrf.disabled=true -Dsetup.security.disabled=true -Dwflow.disable.csrf=true -Djoget.setup.bypass.security=true"

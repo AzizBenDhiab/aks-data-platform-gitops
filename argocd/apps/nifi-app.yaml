@@ -14,8 +14,6 @@ spec:
   - repoURL: https://github.com/AzizBenDhiab/aks-data-platform-gitops.git
     targetRevision: HEAD
     path: manifests/nifi
-    plugin:
-      name: envsubst
   # Helm chart with dynamic authentication
   - repoURL: https://cetic.github.io/helm-charts
     targetRevision: "1.2.1"
@@ -78,22 +76,6 @@ spec:
               secretKeyRef:
                 name: nifi-secrets
                 key: truststore-password
-          # Azure configuration from ConfigMap
-          - name: AZURE_CLIENT_ID
-            valueFrom:
-              configMapKeyRef:
-                name: azure-config
-                key: AZURE_CLIENT_ID
-          - name: AZURE_TENANT_ID
-            valueFrom:
-              configMapKeyRef:
-                name: azure-config
-                key: AZURE_TENANT_ID
-          - name: AZURE_KEYVAULT_NAME
-            valueFrom:
-              configMapKeyRef:
-                name: azure-config
-                key: AZURE_KEYVAULT_NAME
 
         # DYNAMIC AUTHENTICATION: Init container to override chart's authentication
         initContainers:
