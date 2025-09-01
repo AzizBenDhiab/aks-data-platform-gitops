@@ -154,6 +154,11 @@ jobs:
         id: tf-output
         working-directory: ./terraform
         run: |
+          echo "=== Terraform Outputs Raw Values ==="
+          terraform output azure_tenant_id
+          terraform output user_assigned_identity_client_id
+          echo "=== End Raw Values ==="
+          
           echo "cluster_name=$(terraform output -raw cluster_name)" >> $GITHUB_OUTPUT
           echo "resource_group=$(terraform output -raw resource_group_name)" >> $GITHUB_OUTPUT
           echo "keyvault_name=$(terraform output -raw keyvault_name)" >> $GITHUB_OUTPUT
@@ -293,6 +298,13 @@ jobs:
           AZURE_TENANT_ID="${{ needs.terraform.outputs.azure_tenant_id }}"
           KEYVAULT_NAME="${{ needs.terraform.outputs.keyvault_name }}"
 
+          # Fallback for tenant ID if terraform output is empty
+          if [ -z "$AZURE_TENANT_ID" ]; then
+            echo "Terraform azure_tenant_id is empty, using Azure CLI to get tenant ID..."
+            AZURE_TENANT_ID=$(az account show --query tenantId -o tsv)
+            echo "Using tenant ID from Azure CLI: $AZURE_TENANT_ID"
+          fi
+
           # Debug: Print the values we're getting from terraform
           echo "=== Terraform Outputs Debug ==="
           echo "AZURE_CLIENT_ID (user_assigned_identity): '$AZURE_CLIENT_ID'"
@@ -354,29 +366,13 @@ jobs:
                 allowConcurrency: true
           EOF
 
-          # Enable CMP plugin in ArgoCD by patching existing ConfigMap safely
-          echo "Waiting for ArgoCD ConfigMap to be stable..."
-          sleep 10
+          # Skip legacy ConfigMap patching - using modern CMP sidecar approach
+          echo "Using modern CMP sidecar approach, skipping legacy ConfigMap plugin configuration..."
           
-          # Verify the ConfigMap exists first
-          if kubectl get configmap argocd-cm -n argocd >/dev/null 2>&1; then
-            echo "ConfigMap argocd-cm found, applying safe patch..."
-            kubectl patch configmap argocd-cm -n argocd --type strategic -p='{
-              "data": {
-                "configManagementPlugins": "- name: envsubst\n  generate:\n    command: [\"sh\", \"-c\"]\n    args: [\"find \\$ARGOCD_APP_SOURCE_PATH -name '"'"'*.yaml'"'"' -exec envsubst < {} \\; -exec echo '"'"'---'"'"' \\;\"]"
-              }
-            }'
-            echo "ConfigMap patched successfully"
-            
-            # Verify ConfigMap content after patch
-            echo "=== ConfigMap Content After Patch ==="
-            kubectl get configmap argocd-cm -n argocd -o yaml
-            echo "=== End ConfigMap Content ==="
-          else
-            echo "ERROR: argocd-cm ConfigMap not found!"
-            kubectl get configmaps -n argocd
-            exit 1
-          fi
+          # Verify ConfigMap content (should not have configManagementPlugins section)
+          echo "=== ConfigMap Content (should not contain configManagementPlugins) ==="
+          kubectl get configmap argocd-cm -n argocd -o yaml
+          echo "=== End ConfigMap Content ==="
 
           # Inject environment variables into ArgoCD repo-server
           kubectl set env deployment/argocd-repo-server -n argocd --from=configmap/argocd-env
@@ -394,6 +390,35 @@ jobs:
                   "runAsNonRoot": true,
                   "runAsUser": 999
                 },
+                "env": [
+                  {
+                    "name": "AZURE_CLIENT_ID",
+                    "valueFrom": {
+                      "configMapKeyRef": {
+                        "name": "argocd-env",
+                        "key": "AZURE_CLIENT_ID"
+                      }
+                    }
+                  },
+                  {
+                    "name": "AZURE_TENANT_ID",
+                    "valueFrom": {
+                      "configMapKeyRef": {
+                        "name": "argocd-env",
+                        "key": "AZURE_TENANT_ID"
+                      }
+                    }
+                  },
+                  {
+                    "name": "KEYVAULT_NAME",
+                    "valueFrom": {
+                      "configMapKeyRef": {
+                        "name": "argocd-env",
+                        "key": "KEYVAULT_NAME"
+                      }
+                    }
+                  }
+                ],
                 "volumeMounts": [
                   {
                     "mountPath": "/var/run/argocd",
@@ -466,6 +491,20 @@ jobs:
           # Verify environment variables are properly injected
           echo "Verifying environment variables in repo-server..."
           kubectl exec -n argocd $REPO_POD -c argocd-repo-server -- env | grep -E "AZURE_CLIENT_ID|AZURE_TENANT_ID|KEYVAULT_NAME" || echo "Environment variables verification failed, but continuing..."
+          
+          # Verify environment variables in CMP sidecar
+          echo "Verifying environment variables in CMP sidecar..."
+          kubectl exec -n argocd $REPO_POD -c cmp-envsubst -- env | grep -E "AZURE_CLIENT_ID|AZURE_TENANT_ID|KEYVAULT_NAME" || echo "CMP sidecar environment variables verification failed"
+          
+          # Check CMP sidecar logs for plugin registration
+          echo "=== CMP Sidecar Logs ==="
+          kubectl logs -n argocd $REPO_POD -c cmp-envsubst || echo "Failed to get CMP sidecar logs"
+          echo "=== End CMP Sidecar Logs ==="
+          
+          # Check if plugin config is mounted correctly
+          echo "Checking CMP plugin configuration..."
+          kubectl exec -n argocd $REPO_POD -c cmp-envsubst -- ls -la /home/argocd/cmp-server/config/ || echo "Failed to check plugin config"
+          kubectl exec -n argocd $REPO_POD -c cmp-envsubst -- cat /home/argocd/cmp-server/config/plugin.yaml || echo "Failed to read plugin config"
           
           # Install envsubst in the CMP sidecar (if container exists)
           echo "Installing envsubst in CMP sidecar..."
